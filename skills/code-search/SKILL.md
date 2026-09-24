@@ -57,6 +57,12 @@ Use rg (or `graft grep`, which is exhaustive only over indexed files) and count.
 | API surface | graft or serena usable | `graft skeleton <file>` or `get_symbols_overview` |
 | historical | git repo | `git grep -n <pattern> <ref>`, `git show <ref>:<path>`, `git log -S<string>` |
 
+Graph edges are only as good as the parser's resolution. `graft callers X`
+sees direct, same-package calls; it misses calls through a package variable
+(`var submit = approval.SubmitOnDemand`) and often cross-package calls. When
+"no callers" would change what you do next, confirm with `graft grep X` (all
+indexed files) or rg before believing it.
+
 Reuse literal identifiers you already have (a symbol, an error string, a file
 name) as the query. Graft and rg both rank literal matches above prose queries,
 and a literal makes an empty result meaningful instead of ambiguous.

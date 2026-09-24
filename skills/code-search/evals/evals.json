@@ -3,15 +3,29 @@
   "evals": [
     {
       "id": 0,
-      "prompt": "In C:\Users\carlitos\.local\share\chezmoi (a chezmoi dotfiles repo: PowerShell, shell, .tmpl templates), find every place the installers and manual updaters pass the guardrail desired-state flag (enabled/disabled) to the agent-guardrails installer. List file:line for each and say which files you read and which tools you used, in order.",
-      "expected_output": "Four call sites (run_onchange_install_packages.ps1.tmpl, run_onchange_install_packages.sh.tmpl, scripts/update_ai_tools.ps1, scripts/update_ai_tools.sh) with line numbers, found via rg/grep without wasted graft queries, and no whole-file reads.",
-      "files": []
+      "prompt": "In C:/Users/carlitos/.local/share/chezmoi (a chezmoi dotfiles repo: PowerShell, shell, .tmpl templates), find every place the installers and manual updaters pass the guardrail desired-state flag (enabled/disabled) to the agent-guardrails installer. List file:line for each and say which files you read and which tools you used, in order.",
+      "expected_output": "Four call sites (run_onchange_install_packages.ps1.tmpl, run_onchange_install_packages.sh.tmpl, scripts/update_ai_tools.ps1, scripts/update_ai_tools.sh) with line numbers, found via rg/grep without wasted graft queries and without whole-file reads.",
+      "files": [],
+      "assertions": [
+        "Lists all four call sites: run_onchange_install_packages.ps1.tmpl, run_onchange_install_packages.sh.tmpl, scripts/update_ai_tools.ps1, scripts/update_ai_tools.sh, each with a line number",
+        "Makes no more than one graft query (graft ask/grep/callers or graft_* MCP tool) in the tool log",
+        "Uses ripgrep or grep (Grep tool, rg, or grep) as the search that produced the hits",
+        "Reads no whole file: every file read in the log is a bounded range (offset/limit or sed -n a,bp), or no reads beyond the search hits",
+        "Tool log is ordered and includes empty results, as requested"
+      ]
     },
     {
       "id": 1,
-      "prompt": "In C:\Users\carlitos\projects\CtrlCarlitos\agent-guardrails (Go), who calls approval.SubmitOnDemand, and what exact error message does each caller print when it fails? Give file:line for the call sites and the print sites, and list the tools you used in order.",
-      "expected_output": "The callers in cmd/guardrail (plane.go planesViaApproval and any others) with line numbers and the printed strings, found with a symbol-aware tool if available or rg otherwise, reading only the relevant ranges.",
-      "files": []
+      "prompt": "In C:/Users/carlitos/projects/CtrlCarlitos/agent-guardrails (Go), who calls approval.SubmitOnDemand, and what exact error message does each caller print when it fails? Give file:line for the call sites and the print sites, and list the tools you used in order.",
+      "expected_output": "The callers in cmd/guardrail (planesViaApproval in plane.go and any others) with line numbers and the printed strings, found with a symbol-aware tool if available or rg otherwise, reading only the relevant ranges.",
+      "files": [],
+      "assertions": [
+        "Identifies the assignment submitPlaneRequest = approval.SubmitOnDemand in cmd/guardrail/plane.go with a line number and names the callers that use it (planesViaApproval at minimum)",
+        "Quotes the exact printed string for the failure path: 'guardrail: %s: approval request failed: %v' (or the setup path equivalent) with file:line",
+        "Does not report results from the .worktrees/ directory as the callers",
+        "Uses a symbol-aware tool (graft or serena) OR explains in the log why it fell back to rg (no graph / no LSP), rather than issuing repeated empty semantic queries",
+        "Reads no whole file: every file read in the log is a bounded range"
+      ]
     }
   ]
 }
