@@ -1,0 +1,85 @@
+Add --project-root and count a real invocation of the skill as a trigger
+
+find_project_root() walks up from the script's cwd, so run from outside a
+repo it lands in ~/.claude and claude -p runs in the home directory.
+--project-root makes the repo explicit. The detector also accepted only its
+hashed decoy name; when the skill is installed normally the model invokes
+the real name, which now counts.
+
+diff --git a/skills/skill-creator/scripts/run_eval.py b/skills/skill-creator/scripts/run_eval.py
+index e5c889f..0cb2777 100644
+--- a/skills/skill-creator/scripts/run_eval.py
++++ b/skills/skill-creator/scripts/run_eval.py
+@@ -169,12 +169,12 @@ def run_single_query(
+                             delta = se.get("delta", {})
+                             if delta.get("type") == "input_json_delta":
+                                 accumulated_json += delta.get("partial_json", "")
+-                                if clean_name in accumulated_json:
++                                if clean_name in accumulated_json or f'"{skill_name}"' in accumulated_json:
+                                     return True
+ 
+                         elif se_type in ("content_block_stop", "message_stop"):
+                             if pending_tool_name:
+-                                return clean_name in accumulated_json
++                                return clean_name in accumulated_json or f'"{skill_name}"' in accumulated_json
+                             if se_type == "message_stop":
+                                 return False
+ 
+@@ -186,7 +186,7 @@ def run_single_query(
+                                 continue
+                             tool_name = content_item.get("name", "")
+                             tool_input = content_item.get("input", {})
+-                            if tool_name == "Skill" and clean_name in tool_input.get("skill", ""):
++                            if tool_name == "Skill" and (clean_name in tool_input.get("skill", "") or tool_input.get("skill", "") == skill_name):
+                                 triggered = True
+                             elif tool_name == "Read" and clean_name in tool_input.get("file_path", ""):
+                                 triggered = True
+@@ -292,6 +292,7 @@ def main():
+     parser.add_argument("--trigger-threshold", type=float, default=0.5, help="Trigger rate threshold")
+     parser.add_argument("--model", default=None, help="Model to use for claude -p (default: user's configured model)")
+     parser.add_argument("--verbose", action="store_true", help="Print progress to stderr")
++    parser.add_argument("--project-root", default=None, help="Repo to run claude -p in (default: nearest .claude/ above cwd)")
+     args = parser.parse_args()
+ 
+     eval_set = json.loads(Path(args.eval_set).read_text(encoding="utf-8"))
+@@ -303,7 +304,7 @@ def main():
+ 
+     name, original_description, content = parse_skill_md(skill_path)
+     description = args.description or original_description
+-    project_root = find_project_root()
++    project_root = Path(args.project_root).resolve() if args.project_root else find_project_root()
+ 
+     if args.verbose:
+         print(f"Evaluating: {description}", file=sys.stderr)
+diff --git a/skills/skill-creator/scripts/run_loop.py b/skills/skill-creator/scripts/run_loop.py
+index 3dca1e5..8a2f8bf 100644
+--- a/skills/skill-creator/scripts/run_loop.py
++++ b/skills/skill-creator/scripts/run_loop.py
+@@ -58,9 +58,10 @@ def run_loop(
+     verbose: bool,
+     live_report_path: Path | None = None,
+     log_dir: Path | None = None,
++    project_root: Path | None = None,
+ ) -> dict:
+     """Run the eval + improvement loop."""
+-    project_root = find_project_root()
++    project_root = project_root or find_project_root()
+     name, original_description, content = parse_skill_md(skill_path)
+     current_description = description_override or original_description
+ 
+@@ -256,6 +257,7 @@ def main():
+     parser.add_argument("--verbose", action="store_true", help="Print progress to stderr")
+     parser.add_argument("--report", default="auto", help="Generate HTML report at this path (default: 'auto' for temp file, 'none' to disable)")
+     parser.add_argument("--results-dir", default=None, help="Save all outputs (results.json, report.html, log.txt) to a timestamped subdirectory here")
++    parser.add_argument("--project-root", default=None, help="Repo to run claude -p in (default: nearest .claude/ above cwd)")
+     args = parser.parse_args()
+ 
+     eval_set = json.loads(Path(args.eval_set).read_text(encoding="utf-8"))
+@@ -304,6 +306,7 @@ def main():
+         verbose=args.verbose,
+         live_report_path=live_report_path,
+         log_dir=log_dir,
++        project_root=Path(args.project_root).resolve() if args.project_root else None,
+     )
+ 
+     # Save JSON output

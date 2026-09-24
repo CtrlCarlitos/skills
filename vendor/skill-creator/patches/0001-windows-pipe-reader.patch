@@ -1,0 +1,80 @@
+run_eval: read claude -p output through a thread on Windows
+
+select.select() only accepts sockets on Windows, so every query failed with
+WinError 10038. A daemon thread pumps stdout chunks into a queue; the poll
+loop and timeout are unchanged.
+
+diff --git a/skills/skill-creator/scripts/run_eval.py b/skills/skill-creator/scripts/run_eval.py
+index e58c70b..56f5a69 100644
+--- a/skills/skill-creator/scripts/run_eval.py
++++ b/skills/skill-creator/scripts/run_eval.py
+@@ -11,6 +11,9 @@ import os
+ import select
+ import subprocess
+ import sys
++import queue as _queue
++import threading as _threading
++import sys
+ import time
+ import uuid
+ from concurrent.futures import ProcessPoolExecutor, as_completed
+@@ -90,6 +93,20 @@ def run_single_query(
+             env=env,
+         )
+ 
++        # Windows: select() only accepts sockets, so a reader thread pumps
++        # stdout chunks into a queue; None marks EOF.
++        _win_q = None
++        if sys.platform == "win32":
++            _win_q = _queue.Queue()
++            def _pump(q=_win_q, out=process.stdout):
++                while True:
++                    c = out.read1(8192) if hasattr(out, "read1") else out.read(8192)
++                    if not c:
++                        q.put(None)
++                        return
++                    q.put(c)
++            _threading.Thread(target=_pump, daemon=True).start()
++
+         triggered = False
+         start_time = time.time()
+         buffer = ""
+@@ -99,19 +116,27 @@ def run_single_query(
+ 
+         try:
+             while time.time() - start_time < timeout:
+-                if process.poll() is not None:
+-                    remaining = process.stdout.read()
+-                    if remaining:
+-                        buffer += remaining.decode("utf-8", errors="replace")
+-                    break
++                if _win_q is not None:
++                    try:
++                        chunk = _win_q.get(timeout=1.0)
++                    except _queue.Empty:
++                        continue
++                    if chunk is None:
++                        break
++                else:
++                    if process.poll() is not None:
++                        remaining = process.stdout.read()
++                        if remaining:
++                            buffer += remaining.decode("utf-8", errors="replace")
++                        break
+ 
+-                ready, _, _ = select.select([process.stdout], [], [], 1.0)
+-                if not ready:
+-                    continue
++                    ready, _, _ = select.select([process.stdout], [], [], 1.0)
++                    if not ready:
++                        continue
+ 
+-                chunk = os.read(process.stdout.fileno(), 8192)
+-                if not chunk:
+-                    break
++                    chunk = os.read(process.stdout.fileno(), 8192)
++                    if not chunk:
++                        break
+                 buffer += chunk.decode("utf-8", errors="replace")
+ 
+                 while "\n" in buffer:

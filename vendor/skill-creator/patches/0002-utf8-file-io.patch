@@ -1,0 +1,289 @@
+Read and write text files as UTF-8 everywhere
+
+The HTML report contains U+2717; on a cp1252 locale the loop crashed with
+UnicodeEncodeError on its first write. Every read_text/write_text/open now
+passes encoding="utf-8".
+
+diff --git a/skills/skill-creator/eval-viewer/generate_review.py b/skills/skill-creator/eval-viewer/generate_review.py
+index 7fa5978..dfc6c63 100644
+--- a/skills/skill-creator/eval-viewer/generate_review.py
++++ b/skills/skill-creator/eval-viewer/generate_review.py
+@@ -91,7 +91,7 @@ def build_run(root: Path, run_dir: Path) -> dict | None:
+     for candidate in [run_dir / "eval_metadata.json", run_dir.parent / "eval_metadata.json"]:
+         if candidate.exists():
+             try:
+-                metadata = json.loads(candidate.read_text())
++                metadata = json.loads(candidate.read_text(encoding="utf-8"))
+                 prompt = metadata.get("prompt", "")
+                 eval_id = metadata.get("eval_id")
+             except (json.JSONDecodeError, OSError):
+@@ -104,7 +104,7 @@ def build_run(root: Path, run_dir: Path) -> dict | None:
+         for candidate in [run_dir / "transcript.md", run_dir / "outputs" / "transcript.md"]:
+             if candidate.exists():
+                 try:
+-                    text = candidate.read_text()
++                    text = candidate.read_text(encoding="utf-8")
+                     match = re.search(r"## Eval Prompt\n\n([\s\S]*?)(?=\n##|$)", text)
+                     if match:
+                         prompt = match.group(1).strip()
+@@ -131,7 +131,7 @@ def build_run(root: Path, run_dir: Path) -> dict | None:
+     for candidate in [run_dir / "grading.json", run_dir.parent / "grading.json"]:
+         if candidate.exists():
+             try:
+-                grading = json.loads(candidate.read_text())
++                grading = json.loads(candidate.read_text(encoding="utf-8"))
+             except (json.JSONDecodeError, OSError):
+                 pass
+             if grading:
+@@ -153,7 +153,7 @@ def embed_file(path: Path) -> dict:
+ 
+     if ext in TEXT_EXTENSIONS:
+         try:
+-            content = path.read_text(errors="replace")
++            content = path.read_text(encoding="utf-8", errors="replace")
+         except OSError:
+             content = "(Error reading file)"
+         return {
+@@ -222,7 +222,7 @@ def load_previous_iteration(workspace: Path) -> dict[str, dict]:
+     feedback_path = workspace / "feedback.json"
+     if feedback_path.exists():
+         try:
+-            data = json.loads(feedback_path.read_text())
++            data = json.loads(feedback_path.read_text(encoding="utf-8"))
+             feedback_map = {
+                 r["run_id"]: r["feedback"]
+                 for r in data.get("reviews", [])
+@@ -255,7 +255,7 @@ def generate_html(
+ ) -> str:
+     """Generate the complete standalone HTML page with embedded data."""
+     template_path = Path(__file__).parent / "viewer.html"
+-    template = template_path.read_text()
++    template = template_path.read_text(encoding="utf-8")
+ 
+     # Build previous_feedback and previous_outputs maps for the template
+     previous_feedback: dict[str, str] = {}
+@@ -336,7 +336,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
+             benchmark = None
+             if self.benchmark_path and self.benchmark_path.exists():
+                 try:
+-                    benchmark = json.loads(self.benchmark_path.read_text())
++                    benchmark = json.loads(self.benchmark_path.read_text(encoding="utf-8"))
+                 except (json.JSONDecodeError, OSError):
+                     pass
+             html = generate_html(runs, self.skill_name, self.previous, benchmark)
+@@ -366,7 +366,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
+                 data = json.loads(body)
+                 if not isinstance(data, dict) or "reviews" not in data:
+                     raise ValueError("Expected JSON object with 'reviews' key")
+-                self.feedback_path.write_text(json.dumps(data, indent=2) + "\n")
++                self.feedback_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+                 resp = b'{"ok":true}'
+                 self.send_response(200)
+             except (json.JSONDecodeError, OSError, ValueError) as e:
+@@ -424,14 +424,14 @@ def main() -> None:
+     benchmark = None
+     if benchmark_path and benchmark_path.exists():
+         try:
+-            benchmark = json.loads(benchmark_path.read_text())
++            benchmark = json.loads(benchmark_path.read_text(encoding="utf-8"))
+         except (json.JSONDecodeError, OSError):
+             pass
+ 
+     if args.static:
+         html = generate_html(runs, skill_name, previous, benchmark)
+         args.static.parent.mkdir(parents=True, exist_ok=True)
+-        args.static.write_text(html)
++        args.static.write_text(html, encoding="utf-8")
+         print(f"\n  Static viewer written to: {args.static}\n")
+         sys.exit(0)
+ 
+diff --git a/skills/skill-creator/scripts/aggregate_benchmark.py b/skills/skill-creator/scripts/aggregate_benchmark.py
+index 3e66e8c..fa44b38 100644
+--- a/skills/skill-creator/scripts/aggregate_benchmark.py
++++ b/skills/skill-creator/scripts/aggregate_benchmark.py
+@@ -87,7 +87,7 @@ def load_run_results(benchmark_dir: Path) -> dict:
+         metadata_path = eval_dir / "eval_metadata.json"
+         if metadata_path.exists():
+             try:
+-                with open(metadata_path) as mf:
++                with open(metadata_path, encoding="utf-8") as mf:
+                     eval_id = json.load(mf).get("eval_id", eval_idx)
+             except (json.JSONDecodeError, OSError):
+                 eval_id = eval_idx
+@@ -117,7 +117,7 @@ def load_run_results(benchmark_dir: Path) -> dict:
+                     continue
+ 
+                 try:
+-                    with open(grading_file) as f:
++                    with open(grading_file, encoding="utf-8") as f:
+                         grading = json.load(f)
+                 except json.JSONDecodeError as e:
+                     print(f"Warning: Invalid JSON in {grading_file}: {e}")
+@@ -139,7 +139,7 @@ def load_run_results(benchmark_dir: Path) -> dict:
+                 timing_file = run_dir / "timing.json"
+                 if result["time_seconds"] == 0.0 and timing_file.exists():
+                     try:
+-                        with open(timing_file) as tf:
++                        with open(timing_file, encoding="utf-8") as tf:
+                             timing_data = json.load(tf)
+                         result["time_seconds"] = timing_data.get("total_duration_seconds", 0.0)
+                         result["tokens"] = timing_data.get("total_tokens", 0)
+@@ -374,13 +374,13 @@ def main():
+     output_md = output_json.with_suffix(".md")
+ 
+     # Write benchmark.json
+-    with open(output_json, "w") as f:
++    with open(output_json, "w", encoding="utf-8") as f:
+         json.dump(benchmark, f, indent=2)
+     print(f"Generated: {output_json}")
+ 
+     # Write benchmark.md
+     markdown = generate_markdown(benchmark)
+-    with open(output_md, "w") as f:
++    with open(output_md, "w", encoding="utf-8") as f:
+         f.write(markdown)
+     print(f"Generated: {output_md}")
+ 
+diff --git a/skills/skill-creator/scripts/generate_report.py b/skills/skill-creator/scripts/generate_report.py
+index 959e30a..24ec933 100644
+--- a/skills/skill-creator/scripts/generate_report.py
++++ b/skills/skill-creator/scripts/generate_report.py
+@@ -311,12 +311,12 @@ def main():
+     if args.input == "-":
+         data = json.load(sys.stdin)
+     else:
+-        data = json.loads(Path(args.input).read_text())
++        data = json.loads(Path(args.input).read_text(encoding="utf-8"))
+ 
+     html_output = generate_html(data, skill_name=args.skill_name)
+ 
+     if args.output:
+-        Path(args.output).write_text(html_output)
++        Path(args.output).write_text(html_output, encoding="utf-8")
+         print(f"Report written to {args.output}", file=sys.stderr)
+     else:
+         print(html_output)
+diff --git a/skills/skill-creator/scripts/improve_description.py b/skills/skill-creator/scripts/improve_description.py
+index 06bcec7..3fa5ab0 100644
+--- a/skills/skill-creator/scripts/improve_description.py
++++ b/skills/skill-creator/scripts/improve_description.py
+@@ -186,7 +186,7 @@ Please respond with only the new description text in <new_description> tags, not
+     if log_dir:
+         log_dir.mkdir(parents=True, exist_ok=True)
+         log_file = log_dir / f"improve_iter_{iteration or 'unknown'}.json"
+-        log_file.write_text(json.dumps(transcript, indent=2))
++        log_file.write_text(json.dumps(transcript, indent=2), encoding="utf-8")
+ 
+     return description
+ 
+@@ -205,10 +205,10 @@ def main():
+         print(f"Error: No SKILL.md found at {skill_path}", file=sys.stderr)
+         sys.exit(1)
+ 
+-    eval_results = json.loads(Path(args.eval_results).read_text())
++    eval_results = json.loads(Path(args.eval_results).read_text(encoding="utf-8"))
+     history = []
+     if args.history:
+-        history = json.loads(Path(args.history).read_text())
++        history = json.loads(Path(args.history).read_text(encoding="utf-8"))
+ 
+     name, _, content = parse_skill_md(skill_path)
+     current_description = eval_results["description"]
+diff --git a/skills/skill-creator/scripts/quick_validate.py b/skills/skill-creator/scripts/quick_validate.py
+index ed8e1dd..a0b0034 100644
+--- a/skills/skill-creator/scripts/quick_validate.py
++++ b/skills/skill-creator/scripts/quick_validate.py
+@@ -19,7 +19,7 @@ def validate_skill(skill_path):
+         return False, "SKILL.md not found"
+ 
+     # Read and validate frontmatter
+-    content = skill_md.read_text()
++    content = skill_md.read_text(encoding="utf-8")
+     if not content.startswith('---'):
+         return False, "No YAML frontmatter found"
+ 
+diff --git a/skills/skill-creator/scripts/run_eval.py b/skills/skill-creator/scripts/run_eval.py
+index 56f5a69..e5c889f 100644
+--- a/skills/skill-creator/scripts/run_eval.py
++++ b/skills/skill-creator/scripts/run_eval.py
+@@ -68,7 +68,7 @@ def run_single_query(
+             f"# {skill_name}\n\n"
+             f"This skill handles: {skill_description}\n"
+         )
+-        command_file.write_text(command_content)
++        command_file.write_text(command_content, encoding="utf-8")
+ 
+         cmd = [
+             "claude",
+@@ -294,7 +294,7 @@ def main():
+     parser.add_argument("--verbose", action="store_true", help="Print progress to stderr")
+     args = parser.parse_args()
+ 
+-    eval_set = json.loads(Path(args.eval_set).read_text())
++    eval_set = json.loads(Path(args.eval_set).read_text(encoding="utf-8"))
+     skill_path = Path(args.skill_path)
+ 
+     if not (skill_path / "SKILL.md").exists():
+diff --git a/skills/skill-creator/scripts/run_loop.py b/skills/skill-creator/scripts/run_loop.py
+index 30a263d..3dca1e5 100644
+--- a/skills/skill-creator/scripts/run_loop.py
++++ b/skills/skill-creator/scripts/run_loop.py
+@@ -148,7 +148,7 @@ def run_loop(
+                 "test_size": len(test_set),
+                 "history": history,
+             }
+-            live_report_path.write_text(generate_html(partial_output, auto_refresh=True, skill_name=name))
++            live_report_path.write_text(generate_html(partial_output, auto_refresh=True, skill_name=name), encoding="utf-8")
+ 
+         if verbose:
+             def print_eval_stats(label, results, elapsed):
+@@ -258,7 +258,7 @@ def main():
+     parser.add_argument("--results-dir", default=None, help="Save all outputs (results.json, report.html, log.txt) to a timestamped subdirectory here")
+     args = parser.parse_args()
+ 
+-    eval_set = json.loads(Path(args.eval_set).read_text())
++    eval_set = json.loads(Path(args.eval_set).read_text(encoding="utf-8"))
+     skill_path = Path(args.skill_path)
+ 
+     if not (skill_path / "SKILL.md").exists():
+@@ -275,7 +275,7 @@ def main():
+         else:
+             live_report_path = Path(args.report)
+         # Open the report immediately so the user can watch
+-        live_report_path.write_text("<html><body><h1>Starting optimization loop...</h1><meta http-equiv='refresh' content='5'></body></html>")
++        live_report_path.write_text("<html><body><h1>Starting optimization loop...</h1><meta http-equiv='refresh' content='5'></body></html>", encoding="utf-8")
+         webbrowser.open(str(live_report_path))
+     else:
+         live_report_path = None
+@@ -310,15 +310,15 @@ def main():
+     json_output = json.dumps(output, indent=2)
+     print(json_output)
+     if results_dir:
+-        (results_dir / "results.json").write_text(json_output)
++        (results_dir / "results.json").write_text(json_output, encoding="utf-8")
+ 
+     # Write final HTML report (without auto-refresh)
+     if live_report_path:
+-        live_report_path.write_text(generate_html(output, auto_refresh=False, skill_name=name))
++        live_report_path.write_text(generate_html(output, auto_refresh=False, skill_name=name), encoding="utf-8")
+         print(f"\nReport: {live_report_path}", file=sys.stderr)
+ 
+     if results_dir and live_report_path:
+-        (results_dir / "report.html").write_text(generate_html(output, auto_refresh=False, skill_name=name))
++        (results_dir / "report.html").write_text(generate_html(output, auto_refresh=False, skill_name=name), encoding="utf-8")
+ 
+     if results_dir:
+         print(f"Results saved to: {results_dir}", file=sys.stderr)
+diff --git a/skills/skill-creator/scripts/utils.py b/skills/skill-creator/scripts/utils.py
+index 51b6a07..3676913 100644
+--- a/skills/skill-creator/scripts/utils.py
++++ b/skills/skill-creator/scripts/utils.py
+@@ -6,7 +6,7 @@ from pathlib import Path
+ 
+ def parse_skill_md(skill_path: Path) -> tuple[str, str, str]:
+     """Parse a SKILL.md file, returning (name, description, full_content)."""
+-    content = (skill_path / "SKILL.md").read_text()
++    content = (skill_path / "SKILL.md").read_text(encoding="utf-8")
+     lines = content.split("\n")
+ 
+     if lines[0].strip() != "---":

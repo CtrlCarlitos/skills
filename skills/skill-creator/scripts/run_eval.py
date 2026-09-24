@@ -11,6 +11,9 @@ import os
 import select
 import subprocess
 import sys
+import queue as _queue
+import threading as _threading
+import sys
 import time
 import uuid
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -65,7 +68,7 @@ def run_single_query(
             f"# {skill_name}\n\n"
             f"This skill handles: {skill_description}\n"
         )
-        command_file.write_text(command_content)
+        command_file.write_text(command_content, encoding="utf-8")
 
         cmd = [
             "claude",
@@ -90,6 +93,20 @@ def run_single_query(
             env=env,
         )
 
+        # Windows: select() only accepts sockets, so a reader thread pumps
+        # stdout chunks into a queue; None marks EOF.
+        _win_q = None
+        if sys.platform == "win32":
+            _win_q = _queue.Queue()
+            def _pump(q=_win_q, out=process.stdout):
+                while True:
+                    c = out.read1(8192) if hasattr(out, "read1") else out.read(8192)
+                    if not c:
+                        q.put(None)
+                        return
+                    q.put(c)
+            _threading.Thread(target=_pump, daemon=True).start()
+
         triggered = False
         start_time = time.time()
         buffer = ""
@@ -99,19 +116,27 @@ def run_single_query(
 
         try:
             while time.time() - start_time < timeout:
-                if process.poll() is not None:
-                    remaining = process.stdout.read()
-                    if remaining:
-                        buffer += remaining.decode("utf-8", errors="replace")
-                    break
+                if _win_q is not None:
+                    try:
+                        chunk = _win_q.get(timeout=1.0)
+                    except _queue.Empty:
+                        continue
+                    if chunk is None:
+                        break
+                else:
+                    if process.poll() is not None:
+                        remaining = process.stdout.read()
+                        if remaining:
+                            buffer += remaining.decode("utf-8", errors="replace")
+                        break
 
-                ready, _, _ = select.select([process.stdout], [], [], 1.0)
-                if not ready:
-                    continue
+                    ready, _, _ = select.select([process.stdout], [], [], 1.0)
+                    if not ready:
+                        continue
 
-                chunk = os.read(process.stdout.fileno(), 8192)
-                if not chunk:
-                    break
+                    chunk = os.read(process.stdout.fileno(), 8192)
+                    if not chunk:
+                        break
                 buffer += chunk.decode("utf-8", errors="replace")
 
                 while "\n" in buffer:
@@ -144,12 +169,12 @@ def run_single_query(
                             delta = se.get("delta", {})
                             if delta.get("type") == "input_json_delta":
                                 accumulated_json += delta.get("partial_json", "")
-                                if clean_name in accumulated_json:
+                                if clean_name in accumulated_json or f'"{skill_name}"' in accumulated_json:
                                     return True
 
                         elif se_type in ("content_block_stop", "message_stop"):
                             if pending_tool_name:
-                                return clean_name in accumulated_json
+                                return clean_name in accumulated_json or f'"{skill_name}"' in accumulated_json
                             if se_type == "message_stop":
                                 return False
 
@@ -161,7 +186,7 @@ def run_single_query(
                                 continue
                             tool_name = content_item.get("name", "")
                             tool_input = content_item.get("input", {})
-                            if tool_name == "Skill" and clean_name in tool_input.get("skill", ""):
+                            if tool_name == "Skill" and (clean_name in tool_input.get("skill", "") or tool_input.get("skill", "") == skill_name):
                                 triggered = True
                             elif tool_name == "Read" and clean_name in tool_input.get("file_path", ""):
                                 triggered = True
@@ -267,9 +292,10 @@ def main():
     parser.add_argument("--trigger-threshold", type=float, default=0.5, help="Trigger rate threshold")
     parser.add_argument("--model", default=None, help="Model to use for claude -p (default: user's configured model)")
     parser.add_argument("--verbose", action="store_true", help="Print progress to stderr")
+    parser.add_argument("--project-root", default=None, help="Repo to run claude -p in (default: nearest .claude/ above cwd)")
     args = parser.parse_args()
 
-    eval_set = json.loads(Path(args.eval_set).read_text())
+    eval_set = json.loads(Path(args.eval_set).read_text(encoding="utf-8"))
     skill_path = Path(args.skill_path)
 
     if not (skill_path / "SKILL.md").exists():
@@ -278,7 +304,7 @@ def main():
 
     name, original_description, content = parse_skill_md(skill_path)
     description = args.description or original_description
-    project_root = find_project_root()
+    project_root = Path(args.project_root).resolve() if args.project_root else find_project_root()
 
     if args.verbose:
         print(f"Evaluating: {description}", file=sys.stderr)

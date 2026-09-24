@@ -1,0 +1,19 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  vendor-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: skill-creator equals upstream pin + patches
+        run: bash scripts/sync-skill-creator.sh --check
+      - name: every SKILL.md has name and description
+        run: |
+          set -e
+          for f in skills/*/SKILL.md; do
+            grep -q '^name: ' "$f" && grep -q '^description: ' "$f" || { echo "FAIL: $f"; exit 1; }
+          done
+          echo PASS
