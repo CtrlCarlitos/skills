@@ -1,0 +1,17 @@
+{
+  "skill_name": "code-search",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "In C:\Users\carlitos\.local\share\chezmoi (a chezmoi dotfiles repo: PowerShell, shell, .tmpl templates), find every place the installers and manual updaters pass the guardrail desired-state flag (enabled/disabled) to the agent-guardrails installer. List file:line for each and say which files you read and which tools you used, in order.",
+      "expected_output": "Four call sites (run_onchange_install_packages.ps1.tmpl, run_onchange_install_packages.sh.tmpl, scripts/update_ai_tools.ps1, scripts/update_ai_tools.sh) with line numbers, found via rg/grep without wasted graft queries, and no whole-file reads.",
+      "files": []
+    },
+    {
+      "id": 1,
+      "prompt": "In C:\Users\carlitos\projects\CtrlCarlitos\agent-guardrails (Go), who calls approval.SubmitOnDemand, and what exact error message does each caller print when it fails? Give file:line for the call sites and the print sites, and list the tools you used in order.",
+      "expected_output": "The callers in cmd/guardrail (plane.go planesViaApproval and any others) with line numbers and the printed strings, found with a symbol-aware tool if available or rg otherwise, reading only the relevant ranges.",
+      "files": []
+    }
+  ]
+}
