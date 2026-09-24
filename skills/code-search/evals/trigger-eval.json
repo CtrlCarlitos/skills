@@ -1,0 +1,82 @@
+[
+  {
+    "query": "in ~/projects/acme-api (go), who calls NewSessionStore and what do they do with the error it returns? give me file:line",
+    "should_trigger": true
+  },
+  {
+    "query": "how does the retry logic in the payments worker actually work? I see backoff mentioned in a few places but can't tell which one is live. repo is packages/worker in this monorepo",
+    "should_trigger": true
+  },
+  {
+    "query": "find every place we read the STRIPE_WEBHOOK_SECRET env var, including terraform, helm values, and the docs. i want to rename it",
+    "should_trigger": true
+  },
+  {
+    "query": "where is the 'invalid grant' error string coming from? users see it on login. its somewhere in src/auth but grep gives me 40 hits",
+    "should_trigger": true
+  },
+  {
+    "query": "graft ask returned nothing for 'rate limiter' twice. can you figure out where the rate limiting lives in this repo another way",
+    "should_trigger": true
+  },
+  {
+    "query": "what does internal/approval/broker.go expose? just the public API, dont dump the file",
+    "should_trigger": true
+  },
+  {
+    "query": "trace what happens when a user hits POST /orders - which handler, which service, which db calls, in order. django project under backend/",
+    "should_trigger": true
+  },
+  {
+    "query": "the chezmoi repo: where do the installers decide whether to run choco upgrade all? I think its in the ps1 template but not sure",
+    "should_trigger": true
+  },
+  {
+    "query": "what did handlePreToolUse look like at tag v0.21.7-dev vs now? dont checkout, just show me the diff of that function",
+    "should_trigger": true
+  },
+  {
+    "query": "is there any place besides cmd/server/main.go that constructs an http.Server? need to make sure timeouts are set everywhere",
+    "should_trigger": true
+  },
+  {
+    "query": "write a function in go that parses RFC3339 timestamps and returns the unix millis, with tests",
+    "should_trigger": false
+  },
+  {
+    "query": "explain how ripgrep's --glob flag differs from --type, im always mixing them up",
+    "should_trigger": false
+  },
+  {
+    "query": "install ripgrep and fd on this ubuntu box and add them to my zshrc aliases",
+    "should_trigger": false
+  },
+  {
+    "query": "set up graft in this repo: run graft init for claude and codex, then build the graph",
+    "should_trigger": false
+  },
+  {
+    "query": "the search box on our landing page returns results too slowly. profile the /api/search endpoint and suggest fixes",
+    "should_trigger": false
+  },
+  {
+    "query": "i have a list of 200 customer names in names.csv, find the duplicates that differ only by whitespace or case",
+    "should_trigger": false
+  },
+  {
+    "query": "refactor internal/approval/daemon.go so Submit returns the daemon's real error instead of the generic 'approval daemon unavailable' string",
+    "should_trigger": false
+  },
+  {
+    "query": "summarize what the last 10 commits on main changed, one line each",
+    "should_trigger": false
+  },
+  {
+    "query": "grep through the nginx access logs in /var/log/nginx for 5xx responses in the last hour and count by path",
+    "should_trigger": false
+  },
+  {
+    "query": "my serena MCP server shows connected but 0 tools in claude code, how do i fix the config",
+    "should_trigger": false
+  }
+]
