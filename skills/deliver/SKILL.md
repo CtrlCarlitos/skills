@@ -70,7 +70,7 @@ If Standards/Spec review is part of this task's policy, invoke `mp-code-review` 
 
 ## Invocation and enforcement
 
-See `references/cross-harness.md` for the illustrative entry points, the resume/finish contract, and -- separated explicitly -- what Claude Code is confirmed (live, this project) to enforce versus what Antigravity/Codex/OpenCode are documented, but not yet verified live, to enforce (tracked: #24). Saying "deliver issue #123" selects the workflow; it is never by itself permission to push, merge, or delete -- that authorization is Gate 2's question, answered per task.
+See `references/cross-harness.md` for the illustrative entry points, the resume/finish contract, and -- separated explicitly -- what each harness is confirmed, live, to actually enforce versus what `deliver`'s own prose merely instructs (#24; all four harnesses now live-confirmed, with real gaps found for Antigravity and OpenCode's unconfigured default). Saying "deliver issue #123" selects the workflow; it is never by itself permission to push, merge, or delete -- that authorization is Gate 2's question, answered per task.
 
 ## What this skill does not do
 
@@ -79,4 +79,4 @@ See `references/cross-harness.md` for the illustrative entry points, the resume/
 - Does not run a second, competing code review -- coordinates with `mp-code-review` (#7) instead.
 - Does not treat "deliver" as blanket merge authority, an existing issue's mere existence as implementation authorization, or a green optional check as a required one.
 - Does not provision containers, rehearse via `act`, or provision OS/desktop test infrastructure -- see `references/containers-act-os-profiles.md` for the decision and `#23` for the deferred research.
-- Does not claim cross-harness enforcement parity from installation alone -- see `references/cross-harness.md` and `#24`.
+- Does not claim cross-harness enforcement parity from installation alone -- confirmed live, not assumed, that it genuinely doesn't exist (Codex: real OS-level discovery enforcement if configured; OpenCode: none by default; Antigravity: no comprehensive equivalent on its headless CLI) -- see `references/cross-harness.md` and `#24`.
