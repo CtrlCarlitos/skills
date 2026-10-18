@@ -59,3 +59,33 @@ class GroundTopicTests(unittest.TestCase):
             self.assertEqual(len(result["sources"]), 1)
             self.assertEqual(result["sources"][0]["origin"], "santillana")
             self.assertIsNone(result["gap"])
+
+    def test_a_santillana_photo_recorded_for_one_grade_does_not_ground_a_different_grade(self):
+        with tempfile.TemporaryDirectory() as root:
+            workspace = resolve_workspace(Path(root) / "family")
+            photo = Path(root) / "page.jpg"
+            photo.write_bytes(b"photo-bytes")
+            ground_topic(workspace, "lenguaje", "adjetivos", grade="3", is_curricular=True, santillana_photo_path=photo)
+
+            result = ground_topic(workspace, "lenguaje", "adjetivos", grade="5", is_curricular=True)
+
+            self.assertEqual(result["sources"], [])
+            self.assertIsNotNone(result["gap"])
+
+    def test_a_failed_mineducyt_download_still_allows_the_santillana_fallback_to_be_used(self):
+        with tempfile.TemporaryDirectory() as root:
+            workspace = resolve_workspace(Path(root) / "family")
+            photo = Path(root) / "page.jpg"
+            photo.write_bytes(b"photo-bytes")
+
+            def failing_download(url):
+                raise OSError("network down")
+
+            result = ground_topic(
+                workspace, "matematica", "fracciones", grade="3", is_curricular=True,
+                santillana_photo_path=photo, download=failing_download,
+            )
+
+            self.assertEqual(len(result["sources"]), 1)
+            self.assertEqual(result["sources"][0]["origin"], "santillana")
+            self.assertIsNone(result["gap"])

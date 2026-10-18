@@ -1,3 +1,4 @@
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -16,11 +17,12 @@ REGISTRY = {
 
 
 def _default_download(url):
-    return urllib.request.urlopen(url).read()
+    return urllib.request.urlopen(url, timeout=10).read()
 
 
 def fetch_mineducyt_source(subject, grade, cache_dir, download=_default_download):
-    entry = REGISTRY.get((subject.lower(), grade))
+    subject = subject.lower()
+    entry = REGISTRY.get((subject, grade))
     if entry is None:
         return None
 
@@ -28,7 +30,13 @@ def fetch_mineducyt_source(subject, grade, cache_dir, download=_default_download
     cache_dir.mkdir(parents=True, exist_ok=True)
     cached_file = cache_dir / f"{subject}-{grade}.pdf"
     if not cached_file.exists():
-        cached_file.write_bytes(download(entry["url"]))
+        try:
+            content = download(entry["url"])
+        except (urllib.error.URLError, OSError):
+            return None
+        if not content.startswith(b"%PDF"):
+            return None
+        cached_file.write_bytes(content)
 
     return make_source(
         "mineducyt", entry["title"], entry["url"],

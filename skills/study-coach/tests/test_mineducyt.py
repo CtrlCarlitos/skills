@@ -36,3 +36,31 @@ class FetchMineducytSourceTests(unittest.TestCase):
             fetch_mineducyt_source("matematica", "3", Path(cache_dir), download=fake_download)
 
             self.assertEqual(len(calls), 1)
+
+    def test_a_failed_download_returns_none_instead_of_raising(self):
+        def failing_download(url):
+            raise OSError("network down")
+
+        with tempfile.TemporaryDirectory() as cache_dir:
+            result = fetch_mineducyt_source("matematica", "3", Path(cache_dir), download=failing_download)
+
+            self.assertIsNone(result)
+
+    def test_a_download_that_returns_non_pdf_bytes_is_not_cached_and_returns_none(self):
+        with tempfile.TemporaryDirectory() as cache_dir:
+            result = fetch_mineducyt_source("matematica", "3", Path(cache_dir), download=lambda url: b"<html>error</html>")
+
+            self.assertIsNone(result)
+            self.assertFalse((Path(cache_dir) / "matematica-3.pdf").exists())
+
+    def test_registry_lookup_and_cache_filename_are_consistent_regardless_of_subject_casing(self):
+        calls = []
+        def fake_download(url):
+            calls.append(url)
+            return b"%PDF-fake-bytes"
+
+        with tempfile.TemporaryDirectory() as cache_dir:
+            fetch_mineducyt_source("Matematica", "3", Path(cache_dir), download=fake_download)
+            fetch_mineducyt_source("matematica", "3", Path(cache_dir), download=fake_download)
+
+            self.assertEqual(len(calls), 1)

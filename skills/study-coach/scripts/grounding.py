@@ -15,11 +15,11 @@ def ground_topic(workspace, subject, topic, grade, is_curricular, santillana_pho
 
     just_recorded_path = None
     if santillana_photo_path is not None:
-        recorded = record_santillana_photo(workspace, subject, topic, santillana_photo_path)
+        recorded = record_santillana_photo(workspace, subject, topic, grade, santillana_photo_path)
         sources.append(recorded)
         just_recorded_path = recorded["cached_path"]
 
-    for cached in find_cached_santillana_sources(workspace, subject, topic):
+    for cached in find_cached_santillana_sources(workspace, subject, topic, grade):
         if cached["cached_path"] != just_recorded_path:
             sources.append(cached)
 
