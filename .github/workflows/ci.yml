@@ -32,6 +32,9 @@ jobs:
       - name: repo-policy regression tests
         working-directory: skills/repo-policy
         run: python3 -m unittest discover -s tests -v
+      - name: release-notes regression tests
+        working-directory: skills/release-notes
+        run: python3 -m unittest discover -s tests -v
       - name: sync-vendor.sh diff-portability test
         run: bash scripts/tests/test_sync_vendor.sh
 
@@ -73,6 +76,9 @@ jobs:
       - name: repo-policy regression tests
         working-directory: skills/repo-policy
         run: python -m unittest discover -s tests -v
+      - name: release-notes regression tests
+        working-directory: skills/release-notes
+        run: python -m unittest discover -s tests -v
       - name: sync-vendor.sh diff-portability test
         shell: bash
         run: bash scripts/tests/test_sync_vendor.sh
@@ -109,6 +115,9 @@ jobs:
         run: python3 -m unittest discover -s tests -v
       - name: repo-policy regression tests
         working-directory: skills/repo-policy
+        run: python3 -m unittest discover -s tests -v
+      - name: release-notes regression tests
+        working-directory: skills/release-notes
         run: python3 -m unittest discover -s tests -v
       - name: sync-vendor.sh diff-portability test
         run: bash scripts/tests/test_sync_vendor.sh
