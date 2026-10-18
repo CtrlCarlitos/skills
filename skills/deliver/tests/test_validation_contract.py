@@ -61,6 +61,11 @@ class ParseCiStepsTests(unittest.TestCase):
         self.assertFalse(steps[2].get("continue_on_error") is None)
         self.assertTrue(steps[2]["continue_on_error"])
 
+    def test_captures_each_jobs_runs_on(self):
+        steps = parse_ci_steps(SYNTHETIC_WORKFLOW)
+
+        self.assertTrue(all(s["runs_on"] == "ubuntu-latest" for s in steps))
+
 
 class BuildLocalValidationContractTests(unittest.TestCase):
     def test_splits_runnable_steps_from_ci_only_action_steps(self):
