@@ -23,6 +23,12 @@ disable-model-invocation (Claude Code) and agents/openai.yaml (Codex)
 are untouched from upstream. See vendor/show-me/DISPOSITION.md for the
 known manual-invocation gap on OpenCode/Antigravity this does not fix.
 
+
+Also fixes a test bug CI's windows-latest job caught: the main()
+tests compared stdout against the raw tempfile path, but main() resolves
+it (Path.resolve()), which Windows rewrites when the path contains a
+short 8.3 username alias (RUNNER~1 -> runneradmin). Compare against the
+same resolution the production code performs.
 diff --git a/skills/show-me/LICENSE.txt b/skills/show-me/LICENSE.txt
 new file mode 100644
 index 0000000..f7ad6f4
@@ -243,10 +249,10 @@ new file mode 100644
 index 0000000..e69de29
 diff --git a/skills/show-me/tests/test_open_artifact.py b/skills/show-me/tests/test_open_artifact.py
 new file mode 100644
-index 0000000..17b7e02
+index 0000000..d598801
 --- /dev/null
 +++ b/skills/show-me/tests/test_open_artifact.py
-@@ -0,0 +1,173 @@
+@@ -0,0 +1,179 @@
 +"""Tests for the cross-platform artifact opener.
 +
 +Run from skills/show-me/: python3 -m unittest discover -s tests
@@ -400,21 +406,27 @@ index 0000000..17b7e02
 +
 +    def test_existing_artifact_with_available_opener_reports_success(self):
 +        with tempfile.NamedTemporaryFile(suffix=".html") as f:
++            resolved = str(Path(f.name).resolve())
 +            exit_code, stdout, _ = self._run(
 +                [f.name],
 +                which=lambda name: "/usr/bin/xdg-open" if name == "xdg-open" else None,
 +            )
 +
 +        self.assertEqual(exit_code, 0)
-+        self.assertIn(f.name, stdout)
++        # main() resolves the path (Path.resolve()), which can rewrite it --
++        # e.g. Windows expands a short 8.3 alias like RUNNER~1 to the real
++        # long username. Compare against the same resolution, not the raw
++        # input string.
++        self.assertIn(resolved, stdout)
 +        self.assertIn("Opened with", stdout)
 +
 +    def test_existing_artifact_with_no_opener_still_reports_the_path(self):
 +        with tempfile.NamedTemporaryFile(suffix=".html") as f:
++            resolved = str(Path(f.name).resolve())
 +            exit_code, stdout, _ = self._run([f.name], environ={})  # no DISPLAY -> headless
 +
 +        self.assertEqual(exit_code, 0)
-+        self.assertIn(f.name, stdout)
++        self.assertIn(resolved, stdout)
 +        self.assertIn("No opener available", stdout)
 +
 +

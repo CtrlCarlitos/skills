@@ -151,21 +151,27 @@ class MainTests(unittest.TestCase):
 
     def test_existing_artifact_with_available_opener_reports_success(self):
         with tempfile.NamedTemporaryFile(suffix=".html") as f:
+            resolved = str(Path(f.name).resolve())
             exit_code, stdout, _ = self._run(
                 [f.name],
                 which=lambda name: "/usr/bin/xdg-open" if name == "xdg-open" else None,
             )
 
         self.assertEqual(exit_code, 0)
-        self.assertIn(f.name, stdout)
+        # main() resolves the path (Path.resolve()), which can rewrite it --
+        # e.g. Windows expands a short 8.3 alias like RUNNER~1 to the real
+        # long username. Compare against the same resolution, not the raw
+        # input string.
+        self.assertIn(resolved, stdout)
         self.assertIn("Opened with", stdout)
 
     def test_existing_artifact_with_no_opener_still_reports_the_path(self):
         with tempfile.NamedTemporaryFile(suffix=".html") as f:
+            resolved = str(Path(f.name).resolve())
             exit_code, stdout, _ = self._run([f.name], environ={})  # no DISPLAY -> headless
 
         self.assertEqual(exit_code, 0)
-        self.assertIn(f.name, stdout)
+        self.assertIn(resolved, stdout)
         self.assertIn("No opener available", stdout)
 
 
