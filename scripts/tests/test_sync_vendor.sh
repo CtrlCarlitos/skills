@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Regression test for sync-skill-creator.sh's tree-comparison step.
+# Regression test for sync-vendor.sh's tree-comparison step.
 #
 # `diff -r --strip-trailing-cr` (the old implementation) only runs on GNU
 # diffutils; stock macOS ships BSD diff, which rejects --strip-trailing-cr
 # outright, so the maintainer-only `--check` path never ran on a Mac. The
 # replacement, `git diff --no-index --ignore-cr-at-eol`, is the same `git`
-# binary on every platform `sync-skill-creator.sh` already requires.
+# binary on every platform sync-vendor.sh already requires.
 #
 # This test exercises the comparison directly, without network access or
 # the upstream clone, by building two local trees. It does not require any
-# Python test framework; run it with: bash scripts/tests/test_sync_skill_creator.sh
+# Python test framework; run it with: bash scripts/tests/test_sync_vendor.sh
 set -euo pipefail
 
 work="$(mktemp -d)"

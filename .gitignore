@@ -6,3 +6,6 @@
 
 # Python bytecode cache
 __pycache__/
+
+# local guardrail security-tooling state (per-machine egress grants)
+guardrail.toml

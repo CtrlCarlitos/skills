@@ -1,0 +1,434 @@
+Replace the macOS-only `open` with a cross-platform artifact opener
+
+Upstream's only "show the user the artifact" instruction is
+`Bash(open path/to/show-me-{description}.html)` -- macOS's `open`
+command, with no fallback for any other platform. Upstream's own history
+(d3138e5, "open HTML with Bash instead of task-artifact") shows they
+deliberately moved away from a HumanLayer-product-specific inline-display
+mechanism to this generic Bash(open ...) precisely so the skill would
+work as a portable skill across different coding agents -- the same
+reasoning behind this change, one step further.
+
+Adds scripts/open_artifact.py: detects the actual environment (native
+Windows, WSL, Linux desktop/headless, macOS desktop/headless,
+devcontainer) and only attempts an opener that's genuinely available
+there (shutil.which-gated, never assumed). A missing opener never loses
+the artifact, hangs, or gets retried -- the file and its real path are
+the result either way. 23 unit tests, all pure/injectable (no mocking of
+global state).
+
+Also adds LICENSE.txt (MIT, HumanLayer (c) 2026, exact upstream text) and
+a fork note in SKILL.md, matching the skill-creator fork's convention.
+disable-model-invocation (Claude Code) and agents/openai.yaml (Codex)
+are untouched from upstream. See vendor/show-me/DISPOSITION.md for the
+known manual-invocation gap on OpenCode/Antigravity this does not fix.
+
+
+Also fixes a test bug CI's windows-latest job caught: the main()
+tests compared stdout against the raw tempfile path, but main() resolves
+it (Path.resolve()), which Windows rewrites when the path contains a
+short 8.3 username alias (RUNNER~1 -> runneradmin). Compare against the
+same resolution the production code performs.
+diff --git a/skills/show-me/LICENSE.txt b/skills/show-me/LICENSE.txt
+new file mode 100644
+index 0000000..f7ad6f4
+--- /dev/null
++++ b/skills/show-me/LICENSE.txt
+@@ -0,0 +1,21 @@
++MIT License
++
++Copyright (c) 2026 HumanLayer
++
++Permission is hereby granted, free of charge, to any person obtaining a copy
++of this software and associated documentation files (the "Software"), to deal
++in the Software without restriction, including without limitation the rights
++to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++copies of the Software, and to permit persons to whom the Software is
++furnished to do so, subject to the following conditions:
++
++The above copyright notice and this permission notice shall be included in all
++copies or substantial portions of the Software.
++
++THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++SOFTWARE.
+diff --git a/skills/show-me/SKILL.md b/skills/show-me/SKILL.md
+index f0ccd04..8426def 100644
+--- a/skills/show-me/SKILL.md
++++ b/skills/show-me/SKILL.md
+@@ -3,6 +3,13 @@ name: show-me
+ description: Help the user understand the current topic visually with concise diagrams, code-shape sketches, and focused HTML artifacts.
+ disable-model-invocation: true
+ ---
++> Fork of humanlayer/skills `plugins/show-me/skills/show-me` with a cross-platform artifact
++> opener (native Windows, WSL, Linux, macOS, devcontainers) in place of the macOS-only `open`
++> command. Upstream commit, patches, and audit findings: `vendor/show-me/` in
++> CtrlCarlitos/skills. Drop-in: same name, same description. Manual-only invocation
++> (`disable-model-invocation`) is honored by Claude Code and Codex; OpenCode currently ignores
++> it ([anomalyco/opencode#11972](https://github.com/anomalyco/opencode/issues/11972)) and
++> Antigravity is unverified — tracked in #12, not fixable from this fork.
+ 
+ Help the user understand the current topic of conversation visually. Skip the preamble and keep prose brief. Pick the smallest view that makes the key point clear.
+ 
+@@ -115,12 +122,14 @@ function expandSkill(command: string): string {
+ }
+ ```
+ 
+-- For a visual UI, layout, state comparison, or concept too dense for Mermaid, write one focused HTML file — a diagram, an infographic, or a short slide deck, whichever fits the point. Match the product's colors, type, spacing, and components; use real labels and data; support desktop and mobile. Then open it for the user:
++- For a visual UI, layout, state comparison, or concept too dense for Mermaid, write one focused HTML file — a diagram, an infographic, or a short slide deck, whichever fits the point. Match the product's colors, type, spacing, and components; use real labels and data; support desktop and mobile. Write it somewhere writable outside this skill's own installed directory (which may be read-only), then open it for the user:
+ 
+ ```
+-Bash(open path/to/show-me-{description}.html)
++Bash(python3 <path-to-this-skill>/scripts/open_artifact.py path/to/show-me-{description}.html)
+ ```
+ 
++This works the same way on native Windows, WSL, Linux, macOS, and in devcontainers: it always prints the artifact's real path, and only also attempts to launch a viewer when one is actually available on the current machine — detected, not assumed. A missing opener never loses the artifact, hangs, or gets retried; the file and its path are the result either way.
++
+ ### guidance
+ 
+ Place each visual next to the short text it supports. Keep only the calls, files, props, states, and boundaries needed to answer the user's current question or the options to resolve the current discussion point.
+diff --git a/skills/show-me/scripts/__init__.py b/skills/show-me/scripts/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/skills/show-me/scripts/open_artifact.py b/skills/show-me/scripts/open_artifact.py
+new file mode 100755
+index 0000000..f7ac7cd
+--- /dev/null
++++ b/skills/show-me/scripts/open_artifact.py
+@@ -0,0 +1,144 @@
++#!/usr/bin/env python3
++"""Open a generated artifact (e.g. an HTML file) using the best available
++mechanism for the current environment, without ever losing the artifact,
++hanging, or silently failing.
++
++Creating the artifact already succeeded before this script runs; opening
++it is a best-effort convenience layered on top, never a requirement. This
++always prints the artifact's real path and exits 0 whether or not an
++opener actually launched.
++
++Usage: python3 open_artifact.py <path>
++"""
++import argparse
++import os
++import platform
++import shutil
++import subprocess
++import sys
++from pathlib import Path
++
++
++def detect_environment(system: str, environ: dict, proc_version: str) -> str:
++    """Classify the current host into one bucket this module can act on.
++
++    One of: windows, wsl, devcontainer, macos, macos-headless,
++    linux-desktop, linux-headless.
++
++    Pure function over explicit inputs (not os.environ/platform.system()
++    read directly) so the decision logic is testable without mocking.
++    """
++    if system == "Windows":
++        return "windows"
++
++    if system == "Darwin":
++        is_headless_ssh = bool(environ.get("SSH_CONNECTION") or environ.get("SSH_TTY"))
++        return "macos-headless" if is_headless_ssh else "macos"
++
++    # Linux (WSL and devcontainers also report as Linux).
++    is_container = bool(
++        environ.get("REMOTE_CONTAINERS")
++        or environ.get("CODESPACES")
++        or environ.get("DEVCONTAINER")
++    )
++    if is_container:
++        return "devcontainer"
++
++    is_wsl = bool(environ.get("WSL_DISTRO_NAME")) or "microsoft" in proc_version.lower()
++    if is_wsl:
++        return "wsl"
++
++    has_display = bool(environ.get("DISPLAY") or environ.get("WAYLAND_DISPLAY"))
++    return "linux-desktop" if has_display else "linux-headless"
++
++
++def opener_command(env: str, path: Path, which) -> list[str] | None:
++    """The command to launch for this environment, or None.
++
++    None means: no sensible opener exists here (headless SSH, a
++    devcontainer, or a desktop tool that isn't actually installed). The
++    artifact still exists either way -- this only decides whether to also
++    try launching something. `which` is injected (ordinarily
++    shutil.which) so availability is genuinely detected, not assumed.
++    """
++    if env == "windows":
++        # Windows always has cmd.exe; no availability check needed.
++        return ["cmd.exe", "/c", "start", "", str(path)]
++    if env == "macos":
++        # Real macOS always has `open`; no availability check needed.
++        return ["open", str(path)]
++    if env == "wsl":
++        return ["wslview", str(path)] if which("wslview") else None
++    if env == "linux-desktop":
++        return ["xdg-open", str(path)] if which("xdg-open") else None
++    # macos-headless, linux-headless, devcontainer: no opener attempt.
++    return None
++
++
++def try_open(cmd: list[str], popen=subprocess.Popen) -> bool:
++    """Launch cmd without ever blocking on it or letting it raise.
++
++    Fire-and-forget: never calls .wait()/.communicate(), so a GUI opener
++    that doesn't exit on its own can't hang this script. Creating the
++    artifact already succeeded before this runs; a failed launch here is
++    reported, not escalated.
++    """
++    try:
++        popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
++        return True
++    except OSError:
++        return False
++
++
++def _read_proc_version() -> str:
++    try:
++        return Path("/proc/version").read_text(encoding="utf-8", errors="ignore")
++    except OSError:
++        return ""
++
++
++def main(
++    argv: list[str],
++    *,
++    system: str,
++    environ: dict,
++    proc_version: str,
++    which,
++    popen,
++    stdout,
++    stderr,
++) -> int:
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("path")
++    args = parser.parse_args(argv)
++
++    path = Path(args.path).resolve()
++    if not path.exists():
++        print(f"Error: artifact not found at {path}", file=stderr)
++        return 1
++
++    env = detect_environment(system, environ, proc_version)
++    cmd = opener_command(env, path, which)
++    opened = try_open(cmd, popen=popen) if cmd else False
++
++    print(f"Artifact: {path}", file=stdout)
++    if opened:
++        print(f"Opened with: {' '.join(cmd)}", file=stdout)
++    else:
++        print(f"No opener available for this environment ({env}); open the file above manually.", file=stdout)
++    return 0
++
++
++if __name__ == "__main__":
++    sys.exit(
++        main(
++            sys.argv[1:],
++            system=platform.system(),
++            environ=os.environ,
++            proc_version=_read_proc_version(),
++            which=shutil.which,
++            popen=subprocess.Popen,
++            stdout=sys.stdout,
++            stderr=sys.stderr,
++        )
++    )
+diff --git a/skills/show-me/tests/__init__.py b/skills/show-me/tests/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/skills/show-me/tests/test_open_artifact.py b/skills/show-me/tests/test_open_artifact.py
+new file mode 100644
+index 0000000..d598801
+--- /dev/null
++++ b/skills/show-me/tests/test_open_artifact.py
+@@ -0,0 +1,179 @@
++"""Tests for the cross-platform artifact opener.
++
++Run from skills/show-me/: python3 -m unittest discover -s tests
++"""
++import io
++import tempfile
++import unittest
++from pathlib import Path
++
++from scripts.open_artifact import detect_environment, main, opener_command, try_open
++
++
++class DetectEnvironmentTests(unittest.TestCase):
++    def test_windows_is_detected_from_system_name_alone(self):
++        env = detect_environment(system="Windows", environ={}, proc_version="")
++        self.assertEqual(env, "windows")
++
++    def test_macos_desktop_by_default(self):
++        env = detect_environment(system="Darwin", environ={}, proc_version="")
++        self.assertEqual(env, "macos")
++
++    def test_macos_over_ssh_is_headless(self):
++        env = detect_environment(
++            system="Darwin", environ={"SSH_CONNECTION": "1.2.3.4 1 5.6.7.8 22"}, proc_version=""
++        )
++        self.assertEqual(env, "macos-headless")
++
++    def test_linux_with_wsl_distro_env_var_is_wsl(self):
++        env = detect_environment(
++            system="Linux", environ={"WSL_DISTRO_NAME": "Ubuntu"}, proc_version=""
++        )
++        self.assertEqual(env, "wsl")
++
++    def test_linux_with_microsoft_in_proc_version_is_wsl(self):
++        env = detect_environment(
++            system="Linux",
++            environ={},
++            proc_version="Linux version 5.15.0 (Microsoft@Microsoft.com)",
++        )
++        self.assertEqual(env, "wsl")
++
++    def test_linux_in_devcontainer_takes_priority_over_display(self):
++        env = detect_environment(
++            system="Linux",
++            environ={"REMOTE_CONTAINERS": "true", "DISPLAY": ":0"},
++            proc_version="",
++        )
++        self.assertEqual(env, "devcontainer")
++
++    def test_linux_with_display_is_desktop(self):
++        env = detect_environment(system="Linux", environ={"DISPLAY": ":0"}, proc_version="")
++        self.assertEqual(env, "linux-desktop")
++
++    def test_linux_with_no_display_and_no_wsl_signal_is_headless(self):
++        env = detect_environment(system="Linux", environ={}, proc_version="")
++        self.assertEqual(env, "linux-headless")
++
++
++class OpenerCommandTests(unittest.TestCase):
++    PATH = Path("/tmp/show-me-example.html")
++
++    def test_windows_uses_cmd_start(self):
++        cmd = opener_command("windows", self.PATH, which=lambda _: None)
++        self.assertEqual(cmd, ["cmd.exe", "/c", "start", "", str(self.PATH)])
++
++    def test_macos_uses_open(self):
++        cmd = opener_command("macos", self.PATH, which=lambda _: None)
++        self.assertEqual(cmd, ["open", str(self.PATH)])
++
++    def test_wsl_uses_wslview_when_available(self):
++        cmd = opener_command("wsl", self.PATH, which=lambda name: "/usr/bin/wslview" if name == "wslview" else None)
++        self.assertEqual(cmd, ["wslview", str(self.PATH)])
++
++    def test_wsl_has_no_opener_when_wslview_missing(self):
++        cmd = opener_command("wsl", self.PATH, which=lambda _: None)
++        self.assertIsNone(cmd)
++
++    def test_linux_desktop_uses_xdg_open_when_available(self):
++        cmd = opener_command(
++            "linux-desktop", self.PATH, which=lambda name: "/usr/bin/xdg-open" if name == "xdg-open" else None
++        )
++        self.assertEqual(cmd, ["xdg-open", str(self.PATH)])
++
++    def test_linux_desktop_has_no_opener_when_xdg_open_missing(self):
++        cmd = opener_command("linux-desktop", self.PATH, which=lambda _: None)
++        self.assertIsNone(cmd)
++
++    def test_linux_headless_has_no_opener(self):
++        cmd = opener_command("linux-headless", self.PATH, which=lambda _: "/would/be/found")
++        self.assertIsNone(cmd)
++
++    def test_macos_headless_has_no_opener(self):
++        cmd = opener_command("macos-headless", self.PATH, which=lambda _: "/would/be/found")
++        self.assertIsNone(cmd)
++
++    def test_devcontainer_has_no_opener(self):
++        cmd = opener_command("devcontainer", self.PATH, which=lambda _: "/would/be/found")
++        self.assertIsNone(cmd)
++
++
++class TryOpenTests(unittest.TestCase):
++    def test_returns_true_and_never_waits_when_launch_succeeds(self):
++        calls = []
++
++        def fake_popen(cmd, **kwargs):
++            calls.append((cmd, kwargs))
++            return object()  # try_open must not call .wait() on this
++
++        result = try_open(["open", "/tmp/x.html"], popen=fake_popen)
++
++        self.assertTrue(result)
++        self.assertEqual(calls[0][0], ["open", "/tmp/x.html"])
++
++    def test_returns_false_without_raising_when_launch_fails(self):
++        def failing_popen(cmd, **kwargs):
++            raise OSError("command not found")
++
++        result = try_open(["nonexistent"], popen=failing_popen)
++
++        self.assertFalse(result)
++
++    def test_real_nonexistent_command_does_not_raise(self):
++        """No mocking: a command that genuinely doesn't exist on this
++        machine must still return False, not raise."""
++        result = try_open(["definitely-not-a-real-command-xyz-show-me"])
++
++        self.assertFalse(result)
++
++
++class MainTests(unittest.TestCase):
++    def _run(self, argv, **overrides):
++        stdout, stderr = io.StringIO(), io.StringIO()
++        kwargs = dict(
++            system="Linux",
++            environ={"DISPLAY": ":0"},
++            proc_version="",
++            which=lambda _: None,
++            popen=lambda *a, **k: object(),
++            stdout=stdout,
++            stderr=stderr,
++        )
++        kwargs.update(overrides)
++        exit_code = main(argv, **kwargs)
++        return exit_code, stdout.getvalue(), stderr.getvalue()
++
++    def test_missing_artifact_reports_error_and_exits_nonzero(self):
++        exit_code, _, stderr = self._run(["/no/such/path/show-me-example.html"])
++
++        self.assertEqual(exit_code, 1)
++        self.assertIn("not found", stderr)
++
++    def test_existing_artifact_with_available_opener_reports_success(self):
++        with tempfile.NamedTemporaryFile(suffix=".html") as f:
++            resolved = str(Path(f.name).resolve())
++            exit_code, stdout, _ = self._run(
++                [f.name],
++                which=lambda name: "/usr/bin/xdg-open" if name == "xdg-open" else None,
++            )
++
++        self.assertEqual(exit_code, 0)
++        # main() resolves the path (Path.resolve()), which can rewrite it --
++        # e.g. Windows expands a short 8.3 alias like RUNNER~1 to the real
++        # long username. Compare against the same resolution, not the raw
++        # input string.
++        self.assertIn(resolved, stdout)
++        self.assertIn("Opened with", stdout)
++
++    def test_existing_artifact_with_no_opener_still_reports_the_path(self):
++        with tempfile.NamedTemporaryFile(suffix=".html") as f:
++            resolved = str(Path(f.name).resolve())
++            exit_code, stdout, _ = self._run([f.name], environ={})  # no DISPLAY -> headless
++
++        self.assertEqual(exit_code, 0)
++        self.assertIn(resolved, stdout)
++        self.assertIn("No opener available", stdout)
++
++
++if __name__ == "__main__":
++    unittest.main()

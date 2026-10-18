@@ -62,11 +62,12 @@ point 5) surfaced two real bugs, not just the suspicion the issue raised:
   (`tests/test_spaces_and_unicode_paths.py`) and already correct — no bug
   found, now covered by a regression test.
 - `scripts/sync-skill-creator.sh` (maintainer-only, not part of the
-  vendored subtree) had a real macOS portability bug: `diff -r
-  --strip-trailing-cr` uses a GNU-diffutils-only flag that stock macOS's
-  BSD `diff` rejects outright, so `--check` never ran on a Mac without
-  Homebrew coreutils. Fixed by switching to `git diff --no-index
-  --ignore-cr-at-eol` — same `git` binary on every platform this script
+  vendored subtree; generalized into `scripts/sync-vendor.sh <name>` when
+  the `show-me` port added a second vendored skill) had a real macOS
+  portability bug: `diff -r --strip-trailing-cr` uses a GNU-diffutils-only
+  flag that stock macOS's BSD `diff` rejects outright, so `--check` never
+  ran on a Mac without Homebrew coreutils. Fixed by switching to `git diff
+  --no-index --ignore-cr-at-eol` — same `git` binary on every platform this script
   already requires. Covered by `scripts/tests/test_sync_skill_creator.sh`.
 - Fixing the diff portability bug also revealed that `--check` had been
   silently blind to file-mode drift: `diff -r` never compares permission
