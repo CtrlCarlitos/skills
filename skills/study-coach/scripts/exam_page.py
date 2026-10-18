@@ -1,7 +1,13 @@
 import html
 import json
+import random
 
-from scripts.exam_schema import QUESTION_TYPES
+from scripts.exam_schema import QUESTION_TYPES, validate_correct_answer_shape
+
+_LABELS = {
+    "es": {"true": "Verdadero", "false": "Falso", "download": "Descargar resultados", "choose": "-- elige --"},
+    "en": {"true": "True", "false": "False", "download": "Download results", "choose": "-- choose --"},
+}
 
 _SELF_GRADING_SCRIPT = """
 function normalize(value) {
@@ -24,7 +30,15 @@ function readAnswer(question) {
     return answer;
   }
   var checked = el.querySelector("input:checked");
-  return checked ? checked.value : null;
+  if (!checked) {
+    return null;
+  }
+  if (question.type === "true_false") {
+    return checked.value === "true";
+  }
+  // multiple_choice / single_select: the radio's value is the option's
+  // index, mapped back to the original (correctly-typed) option value.
+  return question.options[parseInt(checked.value, 10)];
 }
 
 function gradeAnswer(question, givenAnswer) {
@@ -57,37 +71,40 @@ function downloadResults() {
 """.strip()
 
 
-def _render_multiple_choice(question):
+def _render_multiple_choice(question, labels):
     options_html = "".join(
-        f'<label><input type="radio" name="{question["question_id"]}" value="{html.escape(str(option))}"> {html.escape(str(option))}</label>'
-        for option in (question["options"] or [])
+        f'<label><input type="radio" name="{question["question_id"]}" value="{index}"> {html.escape(str(option))}</label>'
+        for index, option in enumerate(question["options"] or [])
     )
     return f'<div data-question-id="{question["question_id"]}">{options_html}</div>'
 
 
-def _render_true_false(question):
+def _render_true_false(question, labels):
     options_html = "".join(
-        f'<label><input type="radio" name="{question["question_id"]}" value="{value}"> {label}</label>'
-        for value, label in (("true", "True"), ("false", "False"))
+        f'<label><input type="radio" name="{question["question_id"]}" value="{value}"> {html.escape(labels[key])}</label>'
+        for value, key in (("true", "true"), ("false", "false"))
     )
     return f'<div data-question-id="{question["question_id"]}">{options_html}</div>'
 
 
-def _render_fill_in_blank(question):
+def _render_fill_in_blank(question, labels):
     return f'<div data-question-id="{question["question_id"]}"><input type="text"></div>'
 
 
-def _render_matching(question):
+def _render_matching(question, labels):
     pairs = question["correct_answer"] or {}
     right_values = list(pairs.values())
+    shuffled = right_values[:]
+    random.shuffle(shuffled)
+    placeholder = f'<option value="" selected disabled>{html.escape(labels["choose"])}</option>'
     selects_html = ""
     for left in pairs:
-        options_html = "".join(f'<option value="{html.escape(str(v))}">{html.escape(str(v))}</option>' for v in right_values)
+        options_html = placeholder + "".join(f'<option value="{html.escape(str(v))}">{html.escape(str(v))}</option>' for v in shuffled)
         selects_html += f'<label>{html.escape(str(left))} <select data-left="{html.escape(str(left))}">{options_html}</select></label>'
     return f'<div data-question-id="{question["question_id"]}">{selects_html}</div>'
 
 
-def _render_open_response(question):
+def _render_open_response(question, labels):
     return f'<div data-question-id="{question["question_id"]}"><textarea></textarea></div>'
 
 
@@ -101,24 +118,29 @@ _RENDERERS = {
 }
 
 
-def render_exam_html(exam):
+def render_exam_html(exam, language="es"):
+    labels = _LABELS[language]
     question_blocks = []
     for question in exam["questions"]:
         if question["type"] not in QUESTION_TYPES or question["type"] not in _RENDERERS:
             raise ValueError(f"unknown question type: {question['type']!r}")
+        validate_correct_answer_shape(question)
         prompt = html.escape(question["prompt"])
-        question_blocks.append(f"<p>{prompt}</p>{_RENDERERS[question['type']](question)}")
+        question_blocks.append(f"<p>{prompt}</p>{_RENDERERS[question['type']](question, labels)}")
 
     questions_html = "".join(question_blocks)
-    exam_json = json.dumps(exam)
+    # Escape "</" so a question's own text can never prematurely close the
+    # #exam-data script tag; \/ is a valid JSON escape, so json.loads still
+    # round-trips to the exact original exam dict.
+    exam_json = json.dumps(exam).replace("</", "<\\/")
 
     return f"""<!doctype html>
-<html>
+<html lang="{language}">
 <head><meta charset="utf-8"><title>{html.escape(exam["exam_id"])}</title></head>
 <body>
 <script type="application/json" id="exam-data">{exam_json}</script>
 {questions_html}
-<button onclick="downloadResults()">Download results</button>
+<button onclick="downloadResults()">{html.escape(labels["download"])}</button>
 <script>{_SELF_GRADING_SCRIPT}</script>
 </body>
 </html>"""

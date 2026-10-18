@@ -8,6 +8,7 @@ def record_exam_report(child_dir, exam_id, subject, topic, taken_at, topic_repor
     history_path.parent.mkdir(parents=True, exist_ok=True)
 
     history = json.loads(history_path.read_text(encoding="utf-8")) if history_path.exists() else []
+    history = [entry for entry in history if entry["exam_id"] != exam_id]
     history.append({
         "exam_id": exam_id,
         "subject": subject,

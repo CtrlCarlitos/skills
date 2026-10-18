@@ -2,7 +2,10 @@ def aggregate_topic_results(results):
     aggregated = {}
     for entry in results:
         key = f"{entry['subject']}/{entry['topic']}"
-        bucket = aggregated.setdefault(key, {"subject": entry["subject"], "topic": entry["topic"], "correct": 0, "total": 0})
+        bucket = aggregated.setdefault(key, {"subject": entry["subject"], "topic": entry["topic"], "correct": 0, "total": 0, "pending": 0})
+        if entry["correct"] is None:
+            bucket["pending"] += 1
+            continue
         bucket["total"] += 1
         if entry["correct"] is True:
             bucket["correct"] += 1

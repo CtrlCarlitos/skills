@@ -11,15 +11,30 @@ class AggregateTopicResultsTests(unittest.TestCase):
 
         aggregated = aggregate_topic_results(results)
 
-        self.assertEqual(aggregated["lenguaje/sustantivos"], {"subject": "lenguaje", "topic": "sustantivos", "correct": 1, "total": 2})
-        self.assertEqual(aggregated["matematica/fracciones"], {"subject": "matematica", "topic": "fracciones", "correct": 1, "total": 1})
+        self.assertEqual(aggregated["lenguaje/sustantivos"], {"subject": "lenguaje", "topic": "sustantivos", "correct": 1, "total": 2, "pending": 0})
+        self.assertEqual(aggregated["matematica/fracciones"], {"subject": "matematica", "topic": "fracciones", "correct": 1, "total": 1, "pending": 0})
 
-    def test_an_unreviewed_open_response_question_counts_toward_total_but_not_correct(self):
+    def test_an_unreviewed_open_response_question_is_pending_not_counted_toward_the_graded_total(self):
+        # A None (not yet reviewed) result must never be treated as "wrong"
+        # by folding it into total -- that would silently lower a topic's
+        # score before any human/Claude review grade exists for it.
         results = [{"question_id": "q1", "subject": "lenguaje", "topic": "redaccion", "correct": None}]
 
         aggregated = aggregate_topic_results(results)
 
-        self.assertEqual(aggregated["lenguaje/redaccion"], {"subject": "lenguaje", "topic": "redaccion", "correct": 0, "total": 1})
+        self.assertEqual(aggregated["lenguaje/redaccion"], {"subject": "lenguaje", "topic": "redaccion", "correct": 0, "total": 0, "pending": 1})
+
+    def test_a_pending_open_response_never_changes_the_ratio_of_an_otherwise_solid_topic(self):
+        results = [
+            {"question_id": "q1", "subject": "matematica", "topic": "fracciones", "correct": True},
+            {"question_id": "q2", "subject": "matematica", "topic": "fracciones", "correct": True},
+            {"question_id": "q3", "subject": "matematica", "topic": "fracciones", "correct": None},
+        ]
+
+        aggregated = aggregate_topic_results(results)
+
+        self.assertEqual(aggregated["matematica/fracciones"], {"subject": "matematica", "topic": "fracciones", "correct": 2, "total": 2, "pending": 1})
+        self.assertEqual(classify_topic_strength(2, 2), "solid")
 
 class ClassifyTopicStrengthTests(unittest.TestCase):
     def test_too_few_questions_is_insufficient_data_regardless_of_score(self):
