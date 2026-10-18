@@ -1,0 +1,26 @@
+guidance: clarify the "options under discussion" sentence
+
+Requested a skill-creator-driven clarity pass on show-me's body wording
+(not the frontmatter description -- that stays untouched, per #1's
+instruction not to turn this manual-only skill into an implicitly
+triggered one). Read the whole body against skill-creator's own writing
+philosophy (lean, explain-the-why, avoid rigid unclear phrasing) and
+found one genuine ambiguity: the trailing clause conflated two distinct
+use cases -- answering a question, and laying out decision options --
+into one confusing noun phrase. Everything else in the body already
+reads clearly as upstream wrote it; left untouched rather than
+rewriting for marginal, subjective gain against this fork's minimal-diff
+philosophy.
+
+diff --git a/skills/show-me/SKILL.md b/skills/show-me/SKILL.md
+index 4e12f42..27674cf 100644
+--- a/skills/show-me/SKILL.md
++++ b/skills/show-me/SKILL.md
+@@ -137,6 +137,6 @@ This works the same way on native Windows, WSL, Linux, macOS, and in devcontaine
+ 
+ ### guidance
+ 
+-Place each visual next to the short text it supports. Keep only the calls, files, props, states, and boundaries needed to answer the user's current question or the options to resolve the current discussion point.
++Place each visual next to the short text it supports. Keep only the calls, files, props, states, and boundaries needed to answer the user's current question, or to lay out the options under discussion.
+ 
+ You may use one of these, you may use several, it is unlikely you will use all of them. Use your judgement and don't overwhelm the user.
