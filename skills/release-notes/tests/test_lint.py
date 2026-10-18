@@ -96,6 +96,48 @@ class LintFileTests(unittest.TestCase):
 
         self.assertEqual(calls, [["markdownlint-cli2", "--config", ".markdownlint-cli2.jsonc", "CHANGELOG.md"]])
 
+    def test_runs_through_the_shell_on_windows(self):
+        """npx (and an installed markdownlint-cli2) are .cmd shims on
+        Windows; subprocess can't CreateProcess those directly -- confirmed
+        live on windows-latest CI (WinError 2, FileNotFoundError) -- so the
+        call needs shell=True there specifically."""
+        kwargs_seen = {}
+
+        def fake_run(args, **kwargs):
+            kwargs_seen.update(kwargs)
+
+            class FakeResult:
+                returncode = 0
+                stdout = ""
+                stderr = ""
+
+            return FakeResult()
+
+        lint_file(
+            "CHANGELOG.md", which=_which_only("markdownlint-cli2"), run=fake_run, system=lambda: "Windows"
+        )
+
+        self.assertTrue(kwargs_seen.get("shell"))
+
+    def test_does_not_use_the_shell_on_non_windows_platforms(self):
+        kwargs_seen = {}
+
+        def fake_run(args, **kwargs):
+            kwargs_seen.update(kwargs)
+
+            class FakeResult:
+                returncode = 0
+                stdout = ""
+                stderr = ""
+
+            return FakeResult()
+
+        lint_file(
+            "CHANGELOG.md", which=_which_only("markdownlint-cli2"), run=fake_run, system=lambda: "Linux"
+        )
+
+        self.assertFalse(kwargs_seen.get("shell"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -3,6 +3,7 @@
 available means the lint step is skipped -- it is never a hard dependency
 and never a hard failure on its own absence.
 """
+import platform
 import shutil
 import subprocess
 
@@ -20,6 +21,7 @@ def lint_file(
     config_path: str | None = None,
     which=shutil.which,
     run=subprocess.run,
+    system=platform.system,
 ) -> dict:
     """Returns {"ran": bool, "passed": bool, "output": str}. ran=False
     (no linter available) is always reported as passed=True -- an absent
@@ -33,7 +35,10 @@ def lint_file(
         args.extend(["--config", config_path])
     args.append(path)
 
-    result = run(args, capture_output=True, text=True)
+    # markdownlint-cli2 and npx are .cmd shims on Windows; CreateProcess
+    # can't launch those directly without going through the shell --
+    # confirmed live on windows-latest CI (WinError 2, FileNotFoundError).
+    result = run(args, capture_output=True, text=True, shell=(system() == "Windows"))
     return {
         "ran": True,
         "passed": result.returncode == 0,
