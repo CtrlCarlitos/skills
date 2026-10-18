@@ -437,6 +437,8 @@ In Claude.ai, the core workflow is the same (draft → test → review → impro
 
 **Description optimization**: This section requires the `claude` CLI tool (specifically `claude -p`) which is only available in Claude Code. Skip it if you're on Claude.ai.
 
+**Cross-agent eval parity (CtrlCarlitos/skills#10)**: `run_eval.py`/`run_loop.py` also support `--harness codex` and `--harness opencode` (default remains `claude`), each driving that harness's own non-interactive CLI (`codex exec`/`opencode run`) and detecting a skill trigger through that harness's own event shape — neither looks like Claude's `Skill` tool. There is **no `--harness antigravity`**: Antigravity doesn't reliably discover a project-local throwaway skill the way Codex/OpenCode do (confirmed live), and a working adapter would need to write into the user's real *global* skill directory on every single eval query, which this fork won't do silently. If you're evaluating a skill meant for Antigravity, treat this as an untested harness and say so rather than claiming the score transfers. `opencode`'s own CLI has a confirmed, severe reliability issue in some environments (it can hang with no output at all, unrelated to the skill under test) — a run reporting a higher error rate there than for `claude`/`codex` likely reflects that, not the description. See `vendor/skill-creator/DISPOSITION.md`.
+
 **Blind comparison**: Requires subagents. Skip it.
 
 **Packaging**: The `package_skill.py` script works anywhere with Python and a filesystem. On Claude.ai, you can run it and the user can download the resulting `.skill` file.

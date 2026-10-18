@@ -35,20 +35,26 @@ def find_project_root() -> Path:
     return current
 
 
-def find_conflicting_installed_skill(project_root: Path, skill_name: str) -> Path | None:
+def find_conflicting_installed_skill(project_root: Path, skill_name: str, harness: str = "claude") -> Path | None:
     """Return the SKILL.md of a real, already-installed skill with this name, if any.
 
-    The eval harness injects a temporary decoy command to test a candidate
-    description (see run_single_query). If a real skill with the same name
-    is also installed (project- or user-scoped), the model can trigger that
-    unrelated, already-shipped copy instead, and the harness can't tell the
-    two apart — silently measuring the wrong description. Checked eagerly so
-    that contamination is reported, not swallowed into a clean-looking score.
+    The eval harness injects a temporary decoy (a command for Claude; a
+    uniquely-named proxy skill for Codex/OpenCode) to test a candidate
+    description (see run_single_query). If a real skill with the same
+    name is also installed (project- or user-scoped), the model can
+    trigger that unrelated, already-shipped copy instead of the decoy —
+    for Codex/OpenCode this shows up as a false negative (the decoy's
+    uniquely-suffixed name never fires because the model reasonably used
+    the real skill instead), not a contaminated measurement the way
+    Claude's same-named decoy risks. Checked eagerly either way so it's
+    reported, not swallowed into a clean-looking score.
     """
-    for candidate in (
-        project_root / ".claude" / "skills" / skill_name / "SKILL.md",
-        Path.home() / ".claude" / "skills" / skill_name / "SKILL.md",
-    ):
+    candidates = (
+        (project_root / ".claude" / "skills" / skill_name / "SKILL.md", Path.home() / ".claude" / "skills" / skill_name / "SKILL.md")
+        if harness == "claude"
+        else (project_root / ".agents" / "skills" / skill_name / "SKILL.md",)
+    )
+    for candidate in candidates:
         if candidate.is_file():
             return candidate
     return None
@@ -70,7 +76,7 @@ def pump_stdout_to_queue(out, q: "_queue.Queue") -> None:
         q.put(chunk)
 
 
-def run_single_query(
+def _run_single_query_claude(
     query: str,
     skill_name: str,
     skill_description: str,
@@ -236,6 +242,202 @@ def run_single_query(
             command_file.unlink()
 
 
+def _read_json_lines_with_timeout(process: subprocess.Popen, timeout: int):
+    """Shared by the Codex/OpenCode adapters below: reads a process's
+    stdout line-by-line within a deadline, yielding each line parsed as
+    JSON (a non-JSON line is skipped, not raised). Same select()/
+    Windows-queue-reader split as `_run_single_query_claude`'s own read
+    loop, for the same reason: select() only accepts sockets on Windows,
+    so a daemon thread pumps stdout chunks into a queue there instead.
+    """
+    _win_q = None
+    if sys.platform == "win32":
+        _win_q = _queue.Queue()
+        _threading.Thread(target=pump_stdout_to_queue, args=(process.stdout, _win_q), daemon=True).start()
+
+    start_time = time.time()
+    buffer = ""
+    while time.time() - start_time < timeout:
+        if _win_q is not None:
+            try:
+                chunk = _win_q.get(timeout=1.0)
+            except _queue.Empty:
+                continue
+            if chunk is None:
+                break
+        else:
+            if process.poll() is not None:
+                remaining = process.stdout.read()
+                if remaining:
+                    buffer += remaining.decode("utf-8", errors="replace")
+                break
+
+            ready, _, _ = select.select([process.stdout], [], [], 1.0)
+            if not ready:
+                continue
+
+            chunk = os.read(process.stdout.fileno(), 8192)
+            if not chunk:
+                break
+        buffer += chunk.decode("utf-8", errors="replace")
+
+        while "\n" in buffer:
+            line, buffer = buffer.split("\n", 1)
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                yield json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+
+def _write_proxy_agents_skill(project_root: Path, clean_name: str, skill_description: str) -> Path:
+    """Codex and OpenCode both discover skills under `.agents/skills/`
+    (unlike Claude's `.claude/commands/` trick above) -- creates a
+    throwaway skill there with a unique name, so a trigger can be
+    attributed to this exact eval run and not a different, perhaps
+    really-installed, skill of the same base name."""
+    skill_dir = Path(project_root) / ".agents" / "skills" / clean_name
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    skill_file = skill_dir / "SKILL.md"
+    content = (
+        f"---\nname: {clean_name}\ndescription: {skill_description}\n---\n\n"
+        f"This skill handles: {skill_description}\n"
+    )
+    skill_file.write_text(content, encoding="utf-8")
+    return skill_file
+
+
+def _codex_event_indicates_trigger(event: dict, clean_name: str) -> bool:
+    """Codex has no discrete skill tool -- loading a skill shows up as a
+    `command_execution` item whose command is literally
+    `cat <path>/<clean_name>/SKILL.md`. Confirmed live, not assumed."""
+    if event.get("type") != "item.completed":
+        return False
+    item = event.get("item", {})
+    if item.get("type") != "command_execution":
+        return False
+    return clean_name in item.get("command", "")
+
+
+def _run_single_query_codex(
+    query: str,
+    skill_name: str,
+    skill_description: str,
+    timeout: int,
+    project_root: str,
+    model: str | None = None,
+) -> bool:
+    """Codex equivalent of `_run_single_query_claude`: a throwaway skill
+    under `.agents/skills/`, `codex exec --json` for structured output,
+    and `_codex_event_indicates_trigger` to detect the skill load."""
+    unique_id = uuid.uuid4().hex[:8]
+    clean_name = f"{skill_name}-skill-{unique_id}"
+    skill_file = _write_proxy_agents_skill(Path(project_root), clean_name, skill_description)
+
+    try:
+        cmd = ["codex", "exec", "--json", "--sandbox", "read-only", query]
+        if model:
+            cmd.extend(["-m", model])
+
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, cwd=project_root)
+        triggered = False
+        try:
+            for event in _read_json_lines_with_timeout(process, timeout):
+                if _codex_event_indicates_trigger(event, clean_name):
+                    triggered = True
+                    break
+                if event.get("type") == "turn.completed":
+                    break
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+        return triggered
+    finally:
+        if skill_file.exists():
+            skill_file.unlink()
+
+
+def _opencode_event_indicates_trigger(event: dict, clean_name: str) -> bool:
+    """OpenCode's cleanest-of-the-three signal: a discrete `tool_use`
+    event with `part.tool == "skill"` and `part.state.input.name` equal
+    to the triggered skill's name -- structurally the same idea as
+    Claude's own Skill tool, just shaped differently. Confirmed live."""
+    if event.get("type") != "tool_use":
+        return False
+    part = event.get("part", {})
+    if part.get("tool") != "skill":
+        return False
+    return part.get("state", {}).get("input", {}).get("name") == clean_name
+
+
+def _run_single_query_opencode(
+    query: str,
+    skill_name: str,
+    skill_description: str,
+    timeout: int,
+    project_root: str,
+    model: str | None = None,
+) -> bool:
+    """OpenCode equivalent of `_run_single_query_claude`: a throwaway
+    skill under `.agents/skills/`, `opencode run --format json` for
+    structured output, and `_opencode_event_indicates_trigger` to detect
+    the skill load."""
+    unique_id = uuid.uuid4().hex[:8]
+    clean_name = f"{skill_name}-skill-{unique_id}"
+    skill_file = _write_proxy_agents_skill(Path(project_root), clean_name, skill_description)
+
+    try:
+        cmd = ["opencode", "run", "--format", "json", query]
+        if model:
+            cmd.extend(["--model", model])
+
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, cwd=project_root)
+        triggered = False
+        try:
+            for event in _read_json_lines_with_timeout(process, timeout):
+                if _opencode_event_indicates_trigger(event, clean_name):
+                    triggered = True
+                    break
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+        return triggered
+    finally:
+        if skill_file.exists():
+            skill_file.unlink()
+
+
+_HARNESS_ADAPTERS = {
+    "claude": _run_single_query_claude,
+    "codex": _run_single_query_codex,
+    "opencode": _run_single_query_opencode,
+}
+
+
+def run_single_query(
+    query: str,
+    skill_name: str,
+    skill_description: str,
+    timeout: int,
+    project_root: str,
+    model: str | None = None,
+    harness: str = "claude",
+) -> bool:
+    """Dispatches to the adapter for `harness`. Claude's own path
+    (`_run_single_query_claude`) is unchanged from before this dispatch
+    existed; Codex and OpenCode are new (CtrlCarlitos/skills#10).
+    Antigravity has no adapter here -- see
+    vendor/skill-creator/DISPOSITION.md for why."""
+    adapter = _HARNESS_ADAPTERS.get(harness)
+    if adapter is None:
+        raise ValueError(f"Unknown harness: {harness!r} (expected one of {sorted(_HARNESS_ADAPTERS)})")
+    return adapter(query, skill_name, skill_description, timeout, project_root, model)
+
+
 def summarize(results: list[dict]) -> dict:
     """Count passed/failed/errored over a list of per-query result dicts.
 
@@ -314,9 +516,10 @@ def run_eval(
     runs_per_query: int = 1,
     trigger_threshold: float = 0.5,
     model: str | None = None,
+    harness: str = "claude",
 ) -> dict:
     """Run the full eval set and return results."""
-    conflict = find_conflicting_installed_skill(project_root, skill_name)
+    conflict = find_conflicting_installed_skill(project_root, skill_name, harness=harness)
     if conflict:
         print(
             f"WARNING: a real skill named '{skill_name}' is already installed at "
@@ -340,6 +543,7 @@ def run_eval(
                     timeout,
                     str(project_root),
                     model,
+                    harness,
                 )
                 future_to_info[future] = (item, run_idx)
 
@@ -390,6 +594,10 @@ def main():
     parser.add_argument("--model", default=None, help="Model to use for claude -p (default: user's configured model)")
     parser.add_argument("--verbose", action="store_true", help="Print progress to stderr")
     parser.add_argument("--project-root", default=None, help="Repo to run claude -p in (default: nearest .claude/ above cwd)")
+    parser.add_argument(
+        "--harness", choices=sorted(_HARNESS_ADAPTERS), default="claude",
+        help="Which harness's CLI to run the eval queries through (default: claude)",
+    )
     args = parser.parse_args()
 
     eval_set = json.loads(Path(args.eval_set).read_text(encoding="utf-8"))
@@ -416,6 +624,7 @@ def main():
         runs_per_query=args.runs_per_query,
         trigger_threshold=args.trigger_threshold,
         model=args.model,
+        harness=args.harness,
     )
 
     if args.verbose:
