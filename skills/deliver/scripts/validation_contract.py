@@ -13,7 +13,8 @@ import yaml
 
 def parse_ci_steps(workflow_text: str) -> list[dict]:
     """One entry per step across every job in the workflow:
-    {"job", "step_name", "run", "uses", "working_directory", "continue_on_error"}.
+    {"job", "step_name", "run", "uses", "working_directory",
+    "continue_on_error", "runs_on"}.
     """
     data = yaml.safe_load(workflow_text)
     entries = []
@@ -26,6 +27,7 @@ def parse_ci_steps(workflow_text: str) -> list[dict]:
                 "uses": step.get("uses"),
                 "working_directory": step.get("working-directory"),
                 "continue_on_error": bool(step.get("continue-on-error", False)),
+                "runs_on": job.get("runs-on"),
             })
     return entries
 
