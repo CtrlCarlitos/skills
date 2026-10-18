@@ -39,21 +39,34 @@ def find_conflicting_installed_skill(project_root: Path, skill_name: str, harnes
     """Return the SKILL.md of a real, already-installed skill with this name, if any.
 
     The eval harness injects a temporary decoy (a command for Claude; a
-    uniquely-named proxy skill for Codex/OpenCode) to test a candidate
-    description (see run_single_query). If a real skill with the same
-    name is also installed (project- or user-scoped), the model can
-    trigger that unrelated, already-shipped copy instead of the decoy —
-    for Codex/OpenCode this shows up as a false negative (the decoy's
-    uniquely-suffixed name never fires because the model reasonably used
-    the real skill instead), not a contaminated measurement the way
-    Claude's same-named decoy risks. Checked eagerly either way so it's
-    reported, not swallowed into a clean-looking score.
+    uniquely-named proxy skill for Codex/OpenCode/Antigravity) to test a
+    candidate description (see run_single_query). If a real skill with
+    the same name is also installed (project- or user-scoped), the
+    model can trigger that unrelated, already-shipped copy instead of
+    the decoy — for Codex/OpenCode/Antigravity this shows up as a false
+    negative (the decoy's uniquely-suffixed name never fires because the
+    model reasonably used the real skill instead), not a contaminated
+    measurement the way Claude's same-named decoy risks. Checked eagerly
+    either way so it's reported, not swallowed into a clean-looking
+    score.
     """
-    candidates = (
-        (project_root / ".claude" / "skills" / skill_name / "SKILL.md", Path.home() / ".claude" / "skills" / skill_name / "SKILL.md")
-        if harness == "claude"
-        else (project_root / ".agents" / "skills" / skill_name / "SKILL.md",)
-    )
+    if harness == "claude":
+        candidates = (
+            project_root / ".claude" / "skills" / skill_name / "SKILL.md",
+            Path.home() / ".claude" / "skills" / skill_name / "SKILL.md",
+        )
+    elif harness == "agy":
+        # Confirmed live: Antigravity reads both a project-local
+        # .agents/skills/ proxy (same as Codex/OpenCode) and its own
+        # real global skill directory -- a same-named conflict in
+        # either one is the same risk.
+        candidates = (
+            project_root / ".agents" / "skills" / skill_name / "SKILL.md",
+            Path.home() / ".gemini" / "config" / "skills" / skill_name / "SKILL.md",
+        )
+    else:
+        candidates = (project_root / ".agents" / "skills" / skill_name / "SKILL.md",)
+
     for candidate in candidates:
         if candidate.is_file():
             return candidate
@@ -411,10 +424,75 @@ def _run_single_query_opencode(
             skill_file.unlink()
 
 
+def _agy_event_indicates_trigger(event: dict, clean_name: str) -> bool:
+    """Antigravity has no discrete skill tool either -- loading a skill
+    shows up as a `step_update` event with `step_type == "tool"`,
+    `tool_name == "view_file"`, and `tool_info.parameters.AbsolutePath`
+    pointing at the skill's `SKILL.md`. Confirmed live, not assumed."""
+    if event.get("event") != "step_update":
+        return False
+    step_update = event.get("step_update", {})
+    if step_update.get("step_type") != "tool" or step_update.get("tool_name") != "view_file":
+        return False
+    path = step_update.get("tool_info", {}).get("parameters", {}).get("AbsolutePath", "")
+    return clean_name in path and path.endswith("SKILL.md")
+
+
+def _run_single_query_agy(
+    query: str,
+    skill_name: str,
+    skill_description: str,
+    timeout: int,
+    project_root: str,
+    model: str | None = None,
+) -> bool:
+    """Antigravity equivalent of `_run_single_query_claude`: a throwaway
+    skill under `.agents/skills/`, `agy --output-format stream-json
+    --print` for structured output, and `_agy_event_indicates_trigger`
+    to detect the skill load.
+
+    Confirmed live that Antigravity discovers a project-local,
+    unflagged `.agents/skills/` proxy skill correctly -- this is a
+    correction of an earlier version of this adapter work (#27, merged)
+    that wrongly concluded Antigravity couldn't be adapted at all. See
+    vendor/skill-creator/DISPOSITION.md.
+    """
+    unique_id = uuid.uuid4().hex[:8]
+    clean_name = f"{skill_name}-skill-{unique_id}"
+    skill_file = _write_proxy_agents_skill(Path(project_root), clean_name, skill_description)
+
+    try:
+        # --output-format before --print: agy takes --print's value
+        # literally, so a flag placed after it is swallowed as part of
+        # the prompt instead of being parsed as a flag -- confirmed live.
+        cmd = ["agy", "--output-format", "stream-json", "--print", query]
+        if model:
+            cmd.extend(["--model", model])
+
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, cwd=project_root)
+        triggered = False
+        try:
+            for event in _read_json_lines_with_timeout(process, timeout):
+                if _agy_event_indicates_trigger(event, clean_name):
+                    triggered = True
+                    break
+                if event.get("event") == "result":
+                    break
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+        return triggered
+    finally:
+        if skill_file.exists():
+            skill_file.unlink()
+
+
 _HARNESS_ADAPTERS = {
     "claude": _run_single_query_claude,
     "codex": _run_single_query_codex,
     "opencode": _run_single_query_opencode,
+    "agy": _run_single_query_agy,
 }
 
 
@@ -591,7 +669,7 @@ def main():
     parser.add_argument("--timeout", type=int, default=30, help="Timeout per query in seconds")
     parser.add_argument("--runs-per-query", type=int, default=3, help="Number of runs per query")
     parser.add_argument("--trigger-threshold", type=float, default=0.5, help="Trigger rate threshold")
-    parser.add_argument("--model", default=None, help="Model to use for claude -p (default: user's configured model)")
+    parser.add_argument("--model", default=None, help="Model to use for the selected --harness (default: that harness's own configured model)")
     parser.add_argument("--verbose", action="store_true", help="Print progress to stderr")
     parser.add_argument("--project-root", default=None, help="Repo to run claude -p in (default: nearest .claude/ above cwd)")
     parser.add_argument(

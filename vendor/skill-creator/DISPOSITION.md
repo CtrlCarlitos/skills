@@ -78,10 +78,10 @@ point 5) surfaced two real bugs, not just the suspicion the issue raised:
 - Cross-agent execution parity (Claude Code vs. Codex/OpenCode/Antigravity)
   for the evaluation subprocess (`claude -p ...`) was **not** tested in
   this original audit: `run_eval.py`/`run_loop.py` hard-depended on the
-  `claude` CLI specifically. **Resolved for Codex and OpenCode in
-  CtrlCarlitos/skills#10** — see "Cross-agent eval parity" below. Still a
-  documented, reasoned limitation for Antigravity specifically, not
-  fixed.
+  `claude` CLI specifically. **Resolved for Codex, OpenCode, and
+  Antigravity in CtrlCarlitos/skills#10** — see "Cross-agent eval parity"
+  below (including a recorded correction: Antigravity was initially,
+  incorrectly, shipped with no adapter at all).
 - A native macOS runtime smoke test was not performed — this session only
   has WSL/Linux, and GitHub-hosted macOS runners weren't added to CI. The
   macOS diff fix is verified by a direct unit test of the `git diff
@@ -153,25 +153,33 @@ stream from each against a real skill in a real repo:
   Confirmed live, then built as `_run_single_query_opencode` +
   `_opencode_event_indicates_trigger`.
 - **Antigravity** (`agy --output-format stream-json`): also has a real,
-  clean signal (a `view_file` tool call with `AbsolutePath` pointing at
-  the skill's `SKILL.md` — confirmed live while investigating #12). **No
-  adapter was built here, for a specific, confirmed reason, not a vague
-  "unverified":** both Codex's and OpenCode's adapters rely on writing a
-  throwaway, uniquely-named proxy skill under the *project-local*
-  `.agents/skills/` directory per eval query, the same trick
-  `_run_single_query_claude` already uses with `.claude/commands/`. Live
-  testing for #12 established that Antigravity does **not** reliably
-  discover project-local `.agents/skills/` skills at all in this
-  environment — only its real *global* skills directory
-  (`~/.gemini/config/skills/`) is actually read. A working Antigravity
-  adapter would therefore need to write and remove a throwaway skill in
-  the user's real global skill directory on *every single eval query* —
-  a materially more invasive mechanism than the other two harnesses need,
-  and not one this project is willing to do silently inside an
-  automated evaluation loop. If Antigravity ever supports project-local
-  skill overrides (an `--add-dir`-style flag was tried and did not help;
-  a per-project settings override was not found), building this adapter
-  becomes straightforward with the same architecture as the other two.
+  clean signal — a `step_update` event with `step_type == "tool"`,
+  `tool_name == "view_file"`, and `tool_info.parameters.AbsolutePath`
+  pointing at the skill's `SKILL.md`. Confirmed live, then built as
+  `_run_single_query_agy` + `_agy_event_indicates_trigger`, the same
+  throwaway-proxy-skill-under-`.agents/skills/` architecture as the
+  other two adapters.
+
+  **Correction, recorded rather than silently fixed:** the version of
+  this section that shipped in #27 claimed no Antigravity adapter could
+  be built, because live testing for #12 had established that
+  Antigravity "does not reliably discover project-local `.agents/skills/`
+  skills at all" — only its real global skills directory
+  (`~/.gemini/config/skills/`) was supposedly read. **That claim was
+  wrong.** It conflated two different, separately-confirmed facts: (1)
+  a `disable-model-invocation`-flagged skill (`show-me`) is genuinely
+  suppressed from Antigravity's self-reported skill list — real, still
+  true, confirmed again for #12 — and (2) an *unflagged* skill at a
+  project-local path is discovered and invoked completely normally,
+  which a probe skill used during that same #12 investigation already
+  demonstrated at the time but which didn't get connected back to this
+  section's conclusion before #27 shipped. Re-confirmed cleanly, twice,
+  while building `deliver`'s own cross-harness smoke tests (#24): a
+  fresh, uniquely-named, unflagged proxy skill at a project-local
+  `.agents/skills/` path is read via `view_file` exactly like Codex's
+  and OpenCode's proxy mechanisms expect. The fix here is the adapter
+  itself, built with the same architecture as the other two, not a
+  workaround.
 
 ### Architecture: adapters, not three near-duplicate scripts
 
