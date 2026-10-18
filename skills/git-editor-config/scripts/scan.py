@@ -6,7 +6,11 @@ No classification happens here -- that's classify.py's job.
 Uses `-z` (NUL-separated, unquoted paths) rather than plain `ls-files -s`,
 which quotes any path containing non-ASCII bytes (e.g. `"caf\\303\\251.sh"`
 instead of `café.sh`) and would otherwise point this module at a path that
-doesn't exist on disk.
+doesn't exist on disk. Decodes the subprocess output as UTF-8 explicitly
+(not `text=True`'s own locale-default decoding, which on a non-UTF-8
+Windows locale can silently mangle the non-ASCII bytes git actually
+outputs, pointing this module at a path that doesn't exist either --
+caught by the same except clause below, but for the wrong reason).
 
 Submodule gitlinks (mode 160000) and symlinks (mode 120000) are reported
 with no content signal -- a gitlink's "file" may not exist on disk at all
@@ -33,6 +37,7 @@ def scan_tracked_files(repo_root: Path, run=subprocess.run) -> list[dict]:
         cwd=repo_root,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=True,
     )
 

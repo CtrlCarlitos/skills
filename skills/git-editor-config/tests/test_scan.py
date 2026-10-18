@@ -78,6 +78,7 @@ class ScanTrackedFilesTests(unittest.TestCase):
             self.assertEqual(len(files), 1)
             self.assertTrue(files[0]["path"].endswith(".sh"))
             self.assertTrue(files[0]["has_shebang"])
+            self.assertTrue(files[0]["has_shebang"])
 
     def test_a_tracked_file_deleted_from_the_working_tree_does_not_crash(self):
         with tempfile.TemporaryDirectory() as root:

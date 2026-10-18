@@ -32,6 +32,7 @@ def find_unignored_generated_files(repo_root: Path, run=subprocess.run) -> list[
         cwd=repo_root,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=True,
     )
 
