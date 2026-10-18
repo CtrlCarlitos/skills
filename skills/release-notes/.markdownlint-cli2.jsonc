@@ -1,0 +1,19 @@
+{
+  // Rules for this skill's default Keep-a-Changelog-based output.
+  // A repo's own markdownlint config wins over this one (per the skill's
+  // "project conventions win" rule) -- this only applies when the repo
+  // has none.
+  "config": {
+    "default": true,
+    // Entries end with references like "(#123, abc1234)" and can run
+    // long; wrapping them would make diffs noisier, not clearer.
+    "MD013": false,
+    // "### Added", "### Fixed", etc. repeat once per release section --
+    // only flag a literal duplicate heading within the same section.
+    "MD024": { "siblings_only": true },
+    // The draft is often linted as a standalone section (e.g. before
+    // being inserted into an existing CHANGELOG.md), so it won't always
+    // start with a top-level "# Changelog" heading.
+    "MD041": false
+  }
+}

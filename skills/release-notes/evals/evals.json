@@ -1,0 +1,195 @@
+{
+  "fixtures": [
+    {
+      "id": "revert-in-range",
+      "category": "revert-in-range",
+      "description": "A feature is added and reverted inside the same range. Neither the feature nor its revert should be draftable as a delivered change.",
+      "ops": [
+        { "commit": "base", "files": { "base.txt": "base" } },
+        { "tag": "v1.0.0" },
+        { "commit": "feat: add experimental cache flag", "files": { "cache.txt": "x" } },
+        { "revert": "HEAD" }
+      ],
+      "base": "v1.0.0",
+      "head": "HEAD",
+      "expect_kept_subjects": [],
+      "expect_not_included_subjects": [
+        "feat: add experimental cache flag",
+        "Revert \"feat: add experimental cache flag\""
+      ]
+    },
+    {
+      "id": "breaking-change-labelled-refactor",
+      "category": "breaking-change-labelled-refactor",
+      "description": "A commit subject says 'refactor', but its diff removes a public function. list_commits must not filter it out or trust the label -- the agent reads the diff per SKILL.md step 2 and the commit must still be present to read.",
+      "ops": [
+        {
+          "commit": "feat: add parse_config helper",
+          "files": { "config.py": "def parse_config(path):\n    return {}\n\n\ndef parse_config_legacy(path):\n    return {}\n" }
+        },
+        { "tag": "v1.0.0" },
+        {
+          "commit": "refactor: simplify config module",
+          "files": { "config.py": "def parse_config(path):\n    return {}\n" }
+        }
+      ],
+      "base": "v1.0.0",
+      "head": "HEAD",
+      "expect_kept_subjects": ["refactor: simplify config module"],
+      "expect_diff_removes": "def parse_config_legacy"
+    },
+    {
+      "id": "squash-merge",
+      "category": "squash-merge",
+      "description": "GitHub's default squash-merge commit subject ends in '(#123)'. extract_pr_reference must read it so the draft cites the PR, not just a raw commit SHA.",
+      "ops": [
+        { "commit": "base", "files": { "base.txt": "base" } },
+        { "tag": "v1.0.0" },
+        { "commit": "feat: add retry logic (#123)", "files": { "retry.txt": "x" } }
+      ],
+      "base": "v1.0.0",
+      "head": "HEAD",
+      "expect_kept_subjects": ["feat: add retry logic (#123)"],
+      "expect_pr_reference": 123
+    },
+    {
+      "id": "no-user-visible-change",
+      "category": "no-user-visible-change",
+      "description": "A range whose only commit is internal (CI config) and doesn't belong in any Keep a Changelog section. The agent puts nothing in `sections`; render_release_section must then omit every section, leaving just the heading and metadata line.",
+      "ops": [
+        { "commit": "base", "files": { "base.txt": "base" } },
+        { "tag": "v1.0.0" },
+        { "commit": "chore: bump CI cache key", "files": { ".github/workflows/ci.yml": "cache-key: v2\n" } }
+      ],
+      "base": "v1.0.0",
+      "head": "HEAD",
+      "expect_kept_subjects": ["chore: bump CI cache key"],
+      "expect_rendered_sections": {}
+    },
+    {
+      "id": "missing-tag",
+      "category": "missing-tag-or-shallow-clone",
+      "description": "No tag exists anywhere in history and no --base was given. resolve_range must raise and the skill must stop instead of guessing a range.",
+      "ops": [
+        { "commit": "first commit", "files": { "a.txt": "1" } }
+      ],
+      "expect_range_error_contains": "no tag"
+    },
+    {
+      "id": "shallow-clone",
+      "category": "missing-tag-or-shallow-clone",
+      "description": "A genuinely shallow clone (git clone --depth 1 via file://) must be rejected even though it has a tag and a HEAD -- the history needed to resolve the range isn't actually there.",
+      "ops": [
+        { "commit": "first commit", "files": { "a.txt": "1" } },
+        { "tag": "v1.0.0" },
+        { "commit": "second commit", "files": { "a.txt": "2" } }
+      ],
+      "shallow_clone": true,
+      "expect_range_error_contains": "shallow"
+    },
+    {
+      "id": "repo-type-odoo",
+      "category": "repo-type",
+      "description": "An __manifest__.py file identifies an Odoo addon.",
+      "ops": [
+        { "commit": "init", "files": { "__manifest__.py": "{'name': 'x', 'version': '17.0.1.0.0'}" } }
+      ],
+      "expect_detected_type": "odoo"
+    },
+    {
+      "id": "repo-type-phoenix",
+      "category": "repo-type",
+      "description": "A mix.exs that depends on :phoenix identifies a Phoenix app.",
+      "ops": [
+        {
+          "commit": "init",
+          "files": { "mix.exs": "defmodule X.MixProject do\n  defp deps do\n    [{:phoenix, \"~> 1.7\"}]\n  end\nend\n" }
+        }
+      ],
+      "expect_detected_type": "phoenix"
+    },
+    {
+      "id": "repo-type-go",
+      "category": "repo-type",
+      "description": "A go.mod file identifies a Go module.",
+      "ops": [
+        { "commit": "init", "files": { "go.mod": "module example.com/x\n\ngo 1.23\n" } }
+      ],
+      "expect_detected_type": "go"
+    },
+    {
+      "id": "repo-type-flutter",
+      "category": "repo-type",
+      "description": "A pubspec.yaml declaring the Flutter SDK identifies a Flutter app, not just any Dart package.",
+      "ops": [
+        {
+          "commit": "init",
+          "files": { "pubspec.yaml": "name: x\ndependencies:\n  flutter:\n    sdk: flutter\n" }
+        }
+      ],
+      "expect_detected_type": "flutter"
+    },
+    {
+      "id": "repo-type-generic",
+      "category": "repo-type",
+      "description": "Nothing matches any built-in signature -- falls back to generic, the only type with no detection file.",
+      "ops": [
+        { "commit": "init", "files": { "README.md": "# x\n" } }
+      ],
+      "expect_detected_type": "generic"
+    },
+    {
+      "id": "repo-type-course",
+      "category": "repo-type",
+      "description": "course has no reliable file signature -- it's always selected explicitly, never auto-detected.",
+      "ops": [
+        { "commit": "init", "files": { "README.md": "# x\n" } }
+      ],
+      "explicit_type_name": "course",
+      "expect_guide_contains": "course"
+    },
+    {
+      "id": "repo-type-docs",
+      "category": "repo-type",
+      "description": "docs has no reliable file signature either -- always selected explicitly, like course.",
+      "ops": [
+        { "commit": "init", "files": { "README.md": "# x\n" } }
+      ],
+      "explicit_type_name": "docs",
+      "expect_guide_contains": "docs"
+    },
+    {
+      "id": "repo-with-release-notes-override",
+      "category": "repo-override",
+      "description": "A repo with its own .release-notes/type.md must use that guide even though go.mod would otherwise auto-detect as go -- the repo override always wins.",
+      "ops": [
+        {
+          "commit": "init",
+          "files": {
+            "go.mod": "module example.com/x\n",
+            ".release-notes/type.md": "# Our house style\n\nTreat every public HTTP handler change as breaking.\n"
+          }
+        }
+      ],
+      "expect_guide_contains": "Our house style"
+    },
+    {
+      "id": "output-passes-markdownlint",
+      "category": "markdownlint",
+      "description": "A realistic rendered release section, including every 'ours' section, must pass markdownlint-cli2 under this skill's own .markdownlint-cli2.jsonc.",
+      "version": "1.1.0",
+      "date": "2026-02-01",
+      "range_text": "v1.0.0..v1.1.0",
+      "commit_count": 5,
+      "pr_count": 2,
+      "audience": "users",
+      "sections": {
+        "Breaking changes": ["Removed the deprecated --legacy flag (#99, 9876abc)"],
+        "Added": ["Added a retry option to the sync command (#101, abc1234)"],
+        "Fixed": ["Fixed a crash when the config file was missing (#102, def5678)"],
+        "Upgrade notes": ["Run `migrate` before starting the new release (#103, 1234abc)"],
+        "Not included": ["Reverted the experimental cache flag; see #104 (#105, fedcba9)"]
+      }
+    }
+  ]
+}

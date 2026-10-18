@@ -1,0 +1,41 @@
+"""Optional markdownlint-cli2 wrapper: a globally installed binary wins,
+`npx` is the fallback when only Node tooling is present, and no linter
+available means the lint step is skipped -- it is never a hard dependency
+and never a hard failure on its own absence.
+"""
+import shutil
+import subprocess
+
+
+def find_linter(which=shutil.which) -> list[str] | None:
+    if which("markdownlint-cli2"):
+        return ["markdownlint-cli2"]
+    if which("npx"):
+        return ["npx", "--yes", "markdownlint-cli2"]
+    return None
+
+
+def lint_file(
+    path: str,
+    config_path: str | None = None,
+    which=shutil.which,
+    run=subprocess.run,
+) -> dict:
+    """Returns {"ran": bool, "passed": bool, "output": str}. ran=False
+    (no linter available) is always reported as passed=True -- an absent
+    optional tool is not a lint failure."""
+    linter = find_linter(which=which)
+    if linter is None:
+        return {"ran": False, "passed": True, "output": ""}
+
+    args = list(linter)
+    if config_path is not None:
+        args.extend(["--config", config_path])
+    args.append(path)
+
+    result = run(args, capture_output=True, text=True)
+    return {
+        "ran": True,
+        "passed": result.returncode == 0,
+        "output": result.stdout + result.stderr,
+    }
