@@ -39,6 +39,15 @@ class BuildEditorconfigGapsTests(unittest.TestCase):
 
         self.assertEqual(build_editorconfig_gaps(files, existing_sections), [])
 
+    def test_skips_extensions_covered_by_a_brace_alternation_section(self):
+        files = [
+            {"path": "a.py", "mode": "100644", "has_shebang": False, "is_binary": False},
+            {"path": "b.js", "mode": "100644", "has_shebang": False, "is_binary": False},
+        ]
+        existing_sections = [{"pattern": "*.{py,js}", "settings": {"indent_style": "space"}}]
+
+        self.assertEqual(build_editorconfig_gaps(files, existing_sections), [])
+
 
 if __name__ == "__main__":
     unittest.main()
