@@ -21,6 +21,30 @@ so it's testable without sys.platform or a real subprocess, adds a
 tests/ directory covering it, the UTF-8-everywhere invariant from patch
 0002, --project-root resolution from patch 0003, and validate_skill/
 package_skill with spaces and non-ASCII characters in the skill's path,
+and updates the SKILL.md fork note to mention these fixes.
+
+Three more bugs CI's new windows-latest job (same PR) caught on its
+first real run, all fixed here:
+
+- test_find_project_root's tests errored tearing down on Windows:
+  tempfile.TemporaryDirectory()'s cleanup ran while cwd was still
+  inside it (POSIX allows removing a directory you're cd'd into,
+  Windows doesn't), because the chdir-back was deferred to addCleanup,
+  which fires after the `with` block's cleanup already ran. Switched to
+  tempfile.mkdtemp() with its own addCleanup(shutil.rmtree) registered
+  before the chdir-back's, so cleanups run in the right order (LIFO).
+- quick_validate.py imports yaml, but nothing in this repo or upstream
+  ever declared PyYAML as a dependency; it only worked by accident of
+  Ubuntu's base image happening to have it preinstalled. Added
+  requirements.txt (the only third-party import anywhere in this tree,
+  confirmed by an AST scan) and a `pip install -r` CI step.
+- package_skill.py prints status emoji via plain print(), which raises
+  UnicodeEncodeError on Windows' default console encoding (cp1252) --
+  the same bug class as patch 0002's file I/O fix, just for stdout.
+  Reconfigures stdout to UTF-8 at entry (_ensure_utf8_stdout), with a
+  regression test that reproduces the exact crash on any OS by
+  redirecting stdout to a cp1252-encoded stream.
+
 diff --git a/skills/skill-creator/SKILL.md b/skills/skill-creator/SKILL.md
 index 675dce4..b9bfcd6 100644
 --- a/skills/skill-creator/SKILL.md
@@ -45,6 +69,47 @@ index 0000000..c3726e8
 +++ b/skills/skill-creator/requirements.txt
 @@ -0,0 +1 @@
 +pyyaml
+diff --git a/skills/skill-creator/scripts/package_skill.py b/skills/skill-creator/scripts/package_skill.py
+index f48eac4..963a757 100755
+--- a/skills/skill-creator/scripts/package_skill.py
++++ b/skills/skill-creator/scripts/package_skill.py
+@@ -24,6 +24,20 @@ EXCLUDE_FILES = {".DS_Store"}
+ ROOT_EXCLUDE_DIRS = {"evals"}
+ 
+ 
++def _ensure_utf8_stdout() -> None:
++    """Make the status emoji below safe to print regardless of the
++    platform's default console encoding. Windows' default (cp1252) can't
++    represent them, and plain print() raises UnicodeEncodeError on the
++    first one -- the same class of bug as the UTF-8 file I/O patch, just
++    for stdout instead of files.
++    """
++    if hasattr(sys.stdout, "reconfigure"):
++        try:
++            sys.stdout.reconfigure(encoding="utf-8")
++        except (AttributeError, ValueError, OSError):
++            pass
++
++
+ def should_exclude(rel_path: Path) -> bool:
+     """Check if a path should be excluded from packaging."""
+     parts = rel_path.parts
+@@ -50,6 +64,7 @@ def package_skill(skill_path, output_dir=None):
+     Returns:
+         Path to the created .skill file, or None if error
+     """
++    _ensure_utf8_stdout()
+     skill_path = Path(skill_path).resolve()
+ 
+     # Validate skill folder exists
+@@ -109,6 +124,7 @@ def package_skill(skill_path, output_dir=None):
+ 
+ 
+ def main():
++    _ensure_utf8_stdout()
+     if len(sys.argv) < 2:
+         print("Usage: python utils/package_skill.py <path/to/skill-folder> [output-directory]")
+         print("\nExample:")
 diff --git a/skills/skill-creator/scripts/run_eval.py b/skills/skill-creator/scripts/run_eval.py
 index 0cb2777..09af252 100755
 --- a/skills/skill-creator/scripts/run_eval.py
@@ -676,10 +741,10 @@ index 0000000..b7b6ec3
 +    unittest.main()
 diff --git a/skills/skill-creator/tests/test_spaces_and_unicode_paths.py b/skills/skill-creator/tests/test_spaces_and_unicode_paths.py
 new file mode 100644
-index 0000000..0230588
+index 0000000..663224f
 --- /dev/null
 +++ b/skills/skill-creator/tests/test_spaces_and_unicode_paths.py
-@@ -0,0 +1,63 @@
+@@ -0,0 +1,88 @@
 +"""Regression tests: validation and packaging must work when the skill's
 +own path (not its `name:` field, which must stay kebab-case) contains
 +spaces and non-ASCII characters — e.g. a user's home directory like
@@ -687,6 +752,8 @@ index 0000000..0230588
 +
 +Run from skills/skill-creator/: python3 -m unittest discover -s tests
 +"""
++import io
++import sys
 +import tempfile
 +import unittest
 +import zipfile
@@ -739,6 +806,29 @@ index 0000000..0230588
 +            )
 +            # Zip entries must use forward slashes regardless of host OS.
 +            self.assertTrue(all("\\" not in n for n in names), names)
++
++    def test_package_skill_does_not_crash_on_a_non_utf8_stdout(self):
++        """Reproduces the Windows console crash deterministically on any OS.
++
++        package_skill() prints status emoji via plain print(). print()
++        raises UnicodeEncodeError if sys.stdout's encoding can't represent
++        the character -- which is Windows' default console encoding
++        (cp1252), not a hypothetical. Redirecting stdout to a cp1252-backed
++        stream reproduces the exact failure without needing Windows.
++        """
++        with tempfile.TemporaryDirectory() as root:
++            skill_dir = _write_skill(Path(root))
++            output_dir = Path(root) / "dist cp1252"
++
++            fake_stdout = io.TextIOWrapper(io.BytesIO(), encoding="cp1252", errors="strict")
++            original_stdout = sys.stdout
++            sys.stdout = fake_stdout
++            try:
++                result = package_skill(str(skill_dir), str(output_dir))
++            finally:
++                sys.stdout = original_stdout
++
++            self.assertIsNotNone(result)
 +
 +
 +if __name__ == "__main__":

@@ -24,6 +24,20 @@ EXCLUDE_FILES = {".DS_Store"}
 ROOT_EXCLUDE_DIRS = {"evals"}
 
 
+def _ensure_utf8_stdout() -> None:
+    """Make the status emoji below safe to print regardless of the
+    platform's default console encoding. Windows' default (cp1252) can't
+    represent them, and plain print() raises UnicodeEncodeError on the
+    first one -- the same class of bug as the UTF-8 file I/O patch, just
+    for stdout instead of files.
+    """
+    if hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError, OSError):
+            pass
+
+
 def should_exclude(rel_path: Path) -> bool:
     """Check if a path should be excluded from packaging."""
     parts = rel_path.parts
@@ -50,6 +64,7 @@ def package_skill(skill_path, output_dir=None):
     Returns:
         Path to the created .skill file, or None if error
     """
+    _ensure_utf8_stdout()
     skill_path = Path(skill_path).resolve()
 
     # Validate skill folder exists
@@ -109,6 +124,7 @@ def package_skill(skill_path, output_dir=None):
 
 
 def main():
+    _ensure_utf8_stdout()
     if len(sys.argv) < 2:
         print("Usage: python utils/package_skill.py <path/to/skill-folder> [output-directory]")
         print("\nExample:")
