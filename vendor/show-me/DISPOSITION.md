@@ -64,6 +64,63 @@ achieved. Shipping now regardless: the gap is external to this fork (an
 upstream OpenCode feature request, an unverified Antigravity detail), and
 holding the whole port on it would not change either outcome.
 
+## Eval comparison: original vs. adapted
+
+Per this issue's "Improvement and evaluation" section, this reuses
+skill-creator's qualitative output-comparison flow (paired baseline/candidate
+subagents, not the trigger-eval harness — explicitly out of bounds for an
+intentionally `disable-model-invocation: true` skill). Baseline = a snapshot
+of the pristine upstream skill at the pinned commit; candidate = this fork.
+Three cases, each run as a baseline/candidate pair, grounded in this repo's
+actual code rather than invented examples:
+
+1. **Code-flow explanation** ("how `sync-vendor.sh` resolves and applies its
+   patch queue"). Both produced accurate, near-identical pseudocode/call-tree
+   answers. Expected: the SKILL.md guidance for this case is byte-identical
+   between baseline and candidate (only the HTML-diagram paragraph changed),
+   so this is a regression check, not a behavior comparison — passed.
+2. **Structural-change explanation** (commit `378e1b8`'s
+   `sync-skill-creator.sh` → `sync-vendor.sh` generalization, in diff
+   syntax). Same result: near-identical, accurate, format correctly chosen
+   as diff syntax for a "change" case. Also a regression check — passed.
+3. **Dense HTML-worthy example + its opening step**
+   (`open_artifact.py`'s `detect_environment`/`opener_command` decision
+   tree, as an HTML explainer). This is where the fork's actual change is
+   exercised, and it's the one case with a real, triangulated difference:
+   - **Baseline**, following upstream's literal instruction
+     (`Bash(open path/to/show-me-{description}.html)`) verbatim, got: empty
+     stdout, empty stderr, **exit code 4**. Confirmed independently three
+     times — once directly by the agent doing this evaluation, once by the
+     baseline subagent, and reproduced by that subagent a second time as a
+     diagnostic — all on the same real headless WSL2 host, all identical.
+     On this host `/usr/bin/open` happens to be a distribution alternative
+     symlinked to `xdg-open` (not stock behavior everywhere: on a host with
+     no `open` at all, the same instruction fails even more plainly with
+     "command not found", exit 127); either way the instruction produces an
+     opaque, silent, non-zero exit with zero information about what went
+     wrong or whether the artifact even exists.
+   - **Candidate**, running `open_artifact.py` on the identical artifact on
+     the identical host: exit code **0**, printed the artifact's real path,
+     and explained plainly that no opener is available in a `wsl` 
+     environment lacking `wslview` — correctly detected, not guessed.
+   - Both produced comparably well-constructed HTML (self-contained,
+     dark/light-theme-aware, ~300-400 lines) — format selection and content
+     quality are not where this case differs; the opening step is.
+
+A sample candidate output (the HTML explainer from case 3, unmodified) was
+published for direct visual inspection rather than only described.
+
+Not covered by this comparison, and out of scope for it: the
+non-invocation case (whether the skill stays silent unless explicitly
+asked) wasn't re-tested here because no content this fork touches bears on
+it — `disable-model-invocation`/`agents/openai.yaml` are byte-identical to
+upstream by diff, so there is nothing for this fork to have regressed.
+Genuine model/token/runtime measurements were not recorded as a benchmark
+number, per the issue's instruction to record those "only when available"
+— there is no meaningful quantity to benchmark here (no trigger rate, no
+baseline-vs-candidate latency difference worth measuring for a one-shot
+qualitative task).
+
 ## What was not tested
 
 - A native macOS or Windows runtime smoke test of the opener actually
@@ -78,9 +135,11 @@ holding the whole port on it would not change either outcome.
 - Devcontainer behavior (logic + a unit test for the `devcontainer`
   classification) has no CI coverage — no devcontainer CI runner exists
   for this repo.
-- `/show-me` as an actually-triggered Claude Code skill, end-to-end
-  (model picks the right visual format, writes a real HTML file, the
-  opener runs against it) was not run live in this session — that would
-  require a real `claude -p` invocation, which the eval-validity work in
-  #9 already covers the harness-level correctness of; this port adds the
-  opener, which is the part #9's tooling never needed to test.
+- `/show-me` as an actually-*triggered* Claude Code skill (via a real
+  `claude -p` subprocess, the mechanism #9's eval-validity work covers)
+  was not exercised — only a direct, explicit "follow this SKILL.md"
+  subagent invocation (see "Eval comparison" above), which is the
+  qualitative flow this issue asks for and deliberately not the
+  trigger-eval harness. The two test different things: #9's harness tests
+  *whether* a skill gets invoked; this comparison tests the *quality* of
+  what happens once it has been.
