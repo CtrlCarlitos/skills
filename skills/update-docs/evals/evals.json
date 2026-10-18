@@ -1,0 +1,122 @@
+{
+  "fixtures": [
+    {
+      "id": "renamed-flag-still-in-readme",
+      "category": "renamed-flag-still-in-readme",
+      "description": "A CLI flag is renamed in code; README.md (unchanged in this diff) still documents the old name. gather() must surface README.md via all_doc_files so the agent can search it for the old term -- it won't show up in changed_doc_files, since the diff itself never touched it.",
+      "ops": [
+        {
+          "commit": "init",
+          "files": {
+            "cli.py": "import argparse\np = argparse.ArgumentParser()\np.add_argument('--output')\n",
+            "README.md": "# Tool\n\nRun with `--output <path>` to set the output path.\n"
+          }
+        },
+        { "tag": "v1" },
+        { "commit": "feat: rename --output to --out", "files": { "cli.py": "import argparse\np = argparse.ArgumentParser()\np.add_argument('--out')\n" } }
+      ],
+      "scope": "range",
+      "base": "v1",
+      "expect_changed_doc_files": [],
+      "expect_readme_in_all_doc_files": true
+    },
+    {
+      "id": "generated-readme-edited-by-hand",
+      "category": "generated-readme-edited-by-hand",
+      "description": "README.md carries a generated-file marker but was edited in this diff anyway. gather() must flag it in generated_docs despite being in docs_in_scope, so the skill stops instead of treating it as a normal hand-editable finding.",
+      "ops": [
+        {
+          "commit": "init",
+          "files": { "README.md": "<!-- AUTO-GENERATED FILE. DO NOT EDIT. -->\n# API\n\nOriginal content.\n" }
+        },
+        { "tag": "v1" },
+        {
+          "commit": "docs: hand-edit the generated README (should not happen)",
+          "files": { "README.md": "<!-- AUTO-GENERATED FILE. DO NOT EDIT. -->\n# API\n\nHand-edited content.\n" }
+        }
+      ],
+      "scope": "range",
+      "base": "v1",
+      "expect_changed_doc_files": ["README.md"],
+      "expect_generated_docs": ["README.md"]
+    },
+    {
+      "id": "new-env-var-undocumented",
+      "category": "new-env-var-undocumented",
+      "description": "Code starts reading a new environment variable; no doc is touched in this diff. gather() must show the code change in changed_files and an empty docs_in_scope -- the \"is it documented anywhere\" check is the agent's job via all_doc_files, not something gather() itself resolves.",
+      "ops": [
+        { "commit": "init", "files": { "app.py": "import os\n" } },
+        { "tag": "v1" },
+        { "commit": "feat: read a new timeout from the environment", "files": { "app.py": "import os\ntimeout = os.environ['APP_TIMEOUT']\n" } }
+      ],
+      "scope": "range",
+      "base": "v1",
+      "expect_changed_doc_files": [],
+      "expect_changed_files_include": "app.py"
+    },
+    {
+      "id": "doc-describing-planned-feature",
+      "category": "doc-describing-planned-feature",
+      "description": "A doc describes a feature as upcoming/planned, with no corresponding code anywhere. Purely an agent-judgment finding (Rule 7, no future fiction) -- the mechanical fixture just confirms the doc is discovered normally so the agent gets to read it.",
+      "ops": [
+        {
+          "commit": "init",
+          "files": { "README.md": "# Tool\n\nComing soon: a plugin system for custom exporters.\n" }
+        }
+      ],
+      "scope": "repo",
+      "expect_docs_in_scope": ["README.md"]
+    },
+    {
+      "id": "accepted-adr-not-touched",
+      "category": "accepted-adr-not-touched",
+      "description": "A repo has an accepted ADR under docs/adr/. Rule 6 (hands off other records) means it must never be surfaced as a doc to audit at all, even when a commit touches it.",
+      "ops": [
+        {
+          "commit": "init",
+          "files": {
+            "README.md": "# Tool\n",
+            "docs/adr/0001-use-postgres.md": "# ADR 1: Use Postgres\n\nAccepted.\n"
+          }
+        },
+        { "tag": "v1" },
+        {
+          "commit": "chore: fix a typo in the accepted ADR (should still be excluded)",
+          "files": { "docs/adr/0001-use-postgres.md": "# ADR 1: Use Postgres\n\nAccepted. Fixed typo.\n" }
+        }
+      ],
+      "scope": "range",
+      "base": "v1",
+      "expect_changed_doc_files": [],
+      "expect_adr_excluded_from": ["all_doc_files", "changed_doc_files"]
+    },
+    {
+      "id": "repo-with-own-update-docs-override",
+      "category": "repo-override",
+      "description": "A repo with its own .update-docs/type.md must use that guide even though go.mod would otherwise auto-detect as go -- the repo override always wins, same convention as release-notes.",
+      "ops": [
+        {
+          "commit": "init",
+          "files": {
+            "go.mod": "module example.com/x\n",
+            ".update-docs/type.md": "# Our house style\n\nTreat every public HTTP handler's doc comment as the source of truth.\n"
+          }
+        }
+      ],
+      "scope": "repo",
+      "expect_guide_contains": "Our house style"
+    },
+    {
+      "id": "audit-mode-leaves-the-repo-unchanged",
+      "category": "audit-read-only",
+      "description": "Running gather() (Audit mode) must never modify the repo being audited -- not the working tree, not the index, not an untracked file. Any vale-style caching happens outside the repo entirely.",
+      "ops": [
+        {
+          "commit": "init",
+          "files": { "README.md": "# Tool\n\nIn order to use this, run `make build`.\n" }
+        }
+      ],
+      "scope": "repo"
+    }
+  ]
+}
