@@ -7,12 +7,14 @@ disable-model-invocation: true
 > opener (native Windows, WSL, Linux, macOS, devcontainers) in place of the macOS-only `open`
 > command. Upstream commit, patches, and audit findings: `vendor/show-me/` in
 > CtrlCarlitos/skills. Drop-in: same name, same description. Manual-only invocation
-> (`disable-model-invocation`) is honored by Claude Code and Codex; OpenCode currently ignores
-> it ([anomalyco/opencode#11972](https://github.com/anomalyco/opencode/issues/11972)) and
-> Antigravity is unverified — tracked in #12. An explicit "only act when asked" instruction
-> below is a content-level mitigation for harnesses that ignore the flag; it doesn't stop the
-> skill from being loaded into context there, and isn't a hard guarantee the way a harness-level
-> block is — not fixable from this fork either way.
+> (`disable-model-invocation`) is confirmed live (2026-10-18, not just inferred) honored by
+> Claude Code, Codex, and Antigravity; OpenCode still ignores it for a plain `.agents/skills/`
+> install (confirmed live too — a GitHub issue claiming this shipped turned out to be scoped to
+> a separate "V2 skills" config path, not this one). See #12 and `vendor/show-me/DISPOSITION.md`
+> for the full writeup. An explicit "only act when asked" instruction below is a content-level
+> mitigation for harnesses that ignore the flag; it doesn't stop the skill from being loaded into
+> context there, and isn't a hard guarantee the way a harness-level block is — not fixable from
+> this fork either way.
 
 **Only act when the user explicitly asked for this** — via `/show-me`, a direct "show me ..." request, or an unambiguous instruction to use this skill. If you are reading this file but were not explicitly asked, do not produce a diagram, pseudocode block, file tree, diff, or HTML explainer — continue the conversation normally instead. This holds regardless of whether your current harness enforces manual-only invocation at the tool level (some do not); treat this instruction as authoritative either way.
 

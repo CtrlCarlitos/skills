@@ -39,30 +39,53 @@ This skill's entire design intent is to stay user-invoked only — "Do not
 make every coding/design task generate a diagram or HTML file." That
 intent is **not uniformly honored** across this repo's four target
 harnesses (`claude-code`, `codex`, `opencode`, `antigravity`, per the
-`skills` CLI's own valid `--agent` list):
+`skills` CLI's own valid `--agent` list). Re-checked live for #12 on
+2026-10-18, not inferred from docs alone:
 
 - **Claude Code**: `disable-model-invocation: true` works — official,
   documented behavior.
 - **Codex**: `agents/openai.yaml`'s `allow_implicit_invocation: false` is
   upstream's own documented mechanism for this harness.
-- **OpenCode**: confirmed via a live, still-open upstream issue
-  ([anomalyco/opencode#11972](https://github.com/anomalyco/opencode/issues/11972),
-  multiple independent reports) that OpenCode currently **ignores**
-  `disable-model-invocation` entirely — the skill stays visible to the
-  model regardless. The only workaround is the *user's own* OpenCode
-  permission config (`opencode.json`'s `permission.skill` block), which a
-  skill package cannot set on a user's behalf. This is an external,
-  unresolved OpenCode limitation, not something fixable from this fork.
-- **Antigravity**: no confirmed mechanism found either way. It shares the
-  `.agents/skills/` convention with Cursor, where the same
-  `disable-model-invocation` flag is also reportedly ignored (per a
-  Cursor forum report) — suggestive, not confirmed, for Antigravity
-  specifically. Not tested directly.
+- **OpenCode**: **confirmed still broken, live, on the actually-installed
+  version (1.19.0)** — not just inferred from the old GitHub issue.
+  `opencode run "list every skill name you have available"` in a real
+  test repo with show-me installed lists `show-me` right alongside every
+  other skill, despite `disable-model-invocation: true`. The original
+  upstream issue
+  ([anomalyco/opencode#11972](https://github.com/anomalyco/opencode/issues/11972))
+  was auto-closed for inactivity, not fixed, and comments continued
+  reporting the bug for months after. A *newer* issue
+  ([anomalyco/opencode#53172](https://github.com/anomalyco/opencode/issues/53172))
+  was closed `COMPLETED` on 2026-10-06 with a maintainer comment citing a
+  real merged fix
+  ([PR #52747](https://github.com/anomalyco/opencode/pull/52747), merged
+  2026-10-02) — but that fix is scoped to OpenCode's separate "V2 skills"
+  catalog/config path, not the plain `.agents/skills/` convention this
+  repo's skills (and most real-world installs) actually use. The paper
+  trail reads like it shipped; the actual behavior for a normally-
+  installed skill does not. Still an external, unresolved OpenCode
+  limitation for this install path — not fixable from this fork — but
+  now backed by a live repro, not an aging issue thread.
+- **Antigravity: confirmed HONORED, live.** Installed show-me into the
+  real global skills directory
+  (`~/.gemini/config/skills/show-me/`, same mechanism `mp-code-review`/
+  `skill-creator` already use there) and asked `agy` directly whether it
+  had a `show-me` skill available: **"No."** Ruled out a stale-discovery
+  false negative by adding a *fresh, unflagged* probe skill in the same
+  directory at the same time — `agy` immediately reported that one as
+  available ("Yes."), confirming freshness wasn't the reason show-me was
+  hidden. Antigravity does respect `disable-model-invocation: true` for
+  this install path, unlike OpenCode. The Cursor-forum-based suspicion in
+  the original issue write-up undersold Antigravity; it's the one harness
+  here that gets this right alongside Claude Code and Codex.
 
 Tracked in #12 rather than silently shipped as if parity were
-achieved. Shipping now regardless: the gap is external to this fork (an
-upstream OpenCode feature request, an unverified Antigravity detail), and
-holding the whole port on it would not change either outcome.
+achieved. Three of four target harnesses now confirmed correct
+(Claude Code, Codex, Antigravity); OpenCode remains a confirmed, external
+gap for the plain `.agents/skills/` install path. Shipping as-is: the
+remaining gap is outside this fork's control (an OpenCode product
+limitation for this path), and holding the port on it would not change
+the outcome.
 
 ### Partial, pragmatic mitigation
 
