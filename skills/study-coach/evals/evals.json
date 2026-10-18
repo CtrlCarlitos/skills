@@ -1,0 +1,32 @@
+{
+  "scenarios": [
+    {
+      "id": "mineducyt-gap-never-silently-passes",
+      "category": "grounding",
+      "description": "A curricular topic with no MINEDUCYT registry entry and no supplied Santillana photo (e.g. Lenguaje grade 4, this family's real confirmed gap) must return a non-None gap, never an empty-looking result indistinguishable from 'nothing needed.'",
+      "status": "verified-live",
+      "verification": "tests/test_grounding.py::test_curricular_topic_with_no_mineducyt_entry_and_no_photo_reports_a_gap, and the audit CLI's own test_reports_a_gap_for_an_uncovered_curricular_topic."
+    },
+    {
+      "id": "santillana-photos-accumulate-not-overwrite",
+      "category": "grounding",
+      "description": "A second Santillana photo supplied for a subject/topic that already has one cached must accumulate (both retrievable afterward), never overwrite the first into oblivion.",
+      "status": "verified-live",
+      "verification": "tests/test_santillana.py::test_a_second_photo_for_the_same_subject_and_topic_accumulates_rather_than_replacing."
+    },
+    {
+      "id": "non-curricular-topic-skips-curriculum-sources",
+      "category": "grounding",
+      "description": "A non-curricular topic (is_curricular=False) must skip MINEDUCYT and Santillana entirely and return a clean 'use general sources' result, distinguishable from a real gap.",
+      "status": "verified-live",
+      "verification": "tests/test_grounding.py::test_non_curricular_topic_skips_mineducyt_and_santillana_entirely, and the audit CLI's own test_reports_a_general_topic_with_no_gap."
+    },
+    {
+      "id": "workspace-never-lives-inside-this-repo-by-default",
+      "category": "workspace",
+      "description": "Invoking the skill's real entry-point command(s) with no explicit workspace override must never write family data inside this repo's own checkout.",
+      "status": "documented-not-yet-run",
+      "verification": "Needs a live check once Plan 3's actual parent-facing entry-point commands exist to invoke with a default path and confirm where they write. This plan's functions all take an explicit workspace: Path argument with no built-in default, so there is no code path yet that could default into this repo, but there is also no entry-point command yet to exercise end-to-end."
+    }
+  ]
+}
