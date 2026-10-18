@@ -5,6 +5,7 @@ output, since this is about actually running real shell commands.
 
 Run from skills/deliver/: python3 -m unittest discover -s tests
 """
+import platform
 import subprocess
 import sys
 import tempfile
@@ -15,8 +16,18 @@ from scripts.hook_runner import run_validation
 
 _HOOK_RUNNER_PATH = Path(__file__).resolve().parent.parent / "scripts" / "hook_runner.py"
 
+# This repo's CI runs these same tests on all three OSes. A job fixture must
+# default to THIS platform's own conventional runs-on value, or hook_runner's
+# own (correct) current-OS filtering silently excludes it on macOS/Windows CI
+# -- which several of these tests' expected results would then satisfy for
+# the wrong reason (filtered-out looks identical to "ran and matched") rather
+# than visibly failing. Confirmed live: this exact bug shipped and was caught
+# by this project's own CI on the first real PR for this feature.
+_CURRENT_RUNS_ON = {"Linux": "ubuntu-latest", "Windows": "windows-latest", "Darwin": "macos-latest"}[platform.system()]
 
-def _py_job(job_name: str, code: str, continue_on_error: bool = False, runs_on: str = "ubuntu-latest") -> str:
+
+def _py_job(job_name: str, code: str, continue_on_error: bool = False, runs_on: str | None = None) -> str:
+    runs_on = runs_on or _CURRENT_RUNS_ON
     coe = "        continue-on-error: true\n" if continue_on_error else ""
     return (
         f"  {job_name}:\n    runs-on: {runs_on}\n    steps:\n"

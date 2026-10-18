@@ -87,7 +87,12 @@ class InstallTests(unittest.TestCase):
                 content = (target_dir / name).read_text(encoding="utf-8")
                 lines = content.splitlines()
                 self.assertEqual(lines[1], MARKER)
-                self.assertIn(str((_DELIVER_ROOT / "scripts" / "hook_runner.py").resolve()), content)
+                # The hook script embeds this as a POSIX-style path (forward
+                # slashes) even on Windows, since it's run through Git for
+                # Windows' bundled POSIX shell -- confirmed live on Windows
+                # CI, where a str(Path(...)) (backslash) comparison here
+                # failed despite the script being correct.
+                self.assertIn((_DELIVER_ROOT / "scripts" / "hook_runner.py").resolve().as_posix(), content)
                 self.assertIn(_FAKE_PYTHON, content)
                 # The repo root is looked up at runtime (worktree-correct), never baked in.
                 self.assertIn("git rev-parse --show-toplevel", content)

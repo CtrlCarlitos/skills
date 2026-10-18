@@ -54,7 +54,14 @@ def hooks_dir(repo_root: Path, run=subprocess.run) -> Path:
         check=True,
     )
     path = Path(result.stdout.strip())
-    return path if path.is_absolute() else Path(repo_root) / path
+    if not path.is_absolute():
+        path = Path(repo_root) / path
+    # Resolved so two repos (e.g. a main checkout and its worktree) that
+    # share one real hooks directory compare equal even when the OS
+    # reports it two different ways -- macOS's /var -> /private/var
+    # symlink, or Windows' 8.3 short-name alias (RUNNER~1) vs. the long
+    # form, both confirmed live on this project's own CI.
+    return path.resolve()
 
 
 def _repo_local_hooks_dir(repo_root: Path, run=subprocess.run) -> Path:
