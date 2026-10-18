@@ -34,9 +34,9 @@ Ask which specific rows to apply. **Never offer or accept "apply everything."** 
 Four functions in `scripts/apply.py`, one per category -- call only the one matching the approved row's category, with only the approved subset:
 
 - `apply_gitattributes_rules(repo_root, approved)` -- appends one line per approved row to `.gitattributes`.
-- `apply_exec_bit_fixes(repo_root, approved)` -- `git update-index --chmod=+x`/`--chmod=-x` for each approved row's exact path. This is a real git-tracked mode-bit change, not a filesystem-only `chmod` -- it's what actually ships to other checkouts.
+- `apply_exec_bit_fixes(repo_root, approved)` -- `git update-index --chmod=+x`/`--chmod=-x` for each approved row's exact path, and syncs the working-tree file's own mode bit to match. Both have to agree: an index-only change is invisible to `ls -l` and gets silently reverted by the next `git add -A`/`commit -a` on a checkout where `core.filemode` is on.
 - `apply_editorconfig_sections(repo_root, approved, default_settings)` -- appends one `[*.<ext>]` section per approved row to `.editorconfig`. There's no single "right" default per extension this skill can hardcode; ask the user what settings that extension should get (indent style/size, trailing whitespace, final newline) before calling this, the same way a human would decide it for that file type in that repo.
-- `apply_gitignore_patterns(repo_root, approved)` -- appends one pattern per approved row to `.gitignore`.
+- `apply_gitignore_patterns(repo_root, approved)` -- appends one pattern per approved row to `.gitignore`. A row for a file that's already tracked needs a second step this function doesn't do on its own: `git rm --cached` that file, or adding it to `.gitignore` has no effect at all. The row's own `reason` text says when this applies.
 
 ### 5. Verify
 
