@@ -9,7 +9,12 @@ disable-model-invocation: true
 > CtrlCarlitos/skills. Drop-in: same name, same description. Manual-only invocation
 > (`disable-model-invocation`) is honored by Claude Code and Codex; OpenCode currently ignores
 > it ([anomalyco/opencode#11972](https://github.com/anomalyco/opencode/issues/11972)) and
-> Antigravity is unverified — tracked in #12, not fixable from this fork.
+> Antigravity is unverified — tracked in #12. An explicit "only act when asked" instruction
+> below is a content-level mitigation for harnesses that ignore the flag; it doesn't stop the
+> skill from being loaded into context there, and isn't a hard guarantee the way a harness-level
+> block is — not fixable from this fork either way.
+
+**Only act when the user explicitly asked for this** — via `/show-me`, a direct "show me ..." request, or an unambiguous instruction to use this skill. If you are reading this file but were not explicitly asked, do not produce a diagram, pseudocode block, file tree, diff, or HTML explainer — continue the conversation normally instead. This holds regardless of whether your current harness enforces manual-only invocation at the tool level (some do not); treat this instruction as authoritative either way.
 
 Help the user understand the current topic of conversation visually. Skip the preamble and keep prose brief. Pick the smallest view that makes the key point clear.
 
