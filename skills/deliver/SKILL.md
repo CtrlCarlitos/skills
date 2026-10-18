@@ -54,7 +54,18 @@ results = run_contract(contract, repo_root)
 - A missing tool, a skipped check, or an infra failure during this step is not a pass -- `superpowers:verification-before-completion`'s Iron Law applies directly here: no completion or "ready to push" claim without having actually run the contract on the current tree and read its output.
 - Pending/missing/cancelled/empty results are not success either, on this step or on the real CI run after pushing.
 
-See `references/hooks-decision.md` for why this is a skill-level step rather than a Git hook in this repository (short version: no existing hook infrastructure here, and a hook would duplicate enforcement `deliver` already provides as part of its own flow -- an installable hook is deferred to #23 for anyone who wants a backstop against skipping the skill itself).
+See `references/hooks-decision.md` for why this is a skill-level step rather than a Git hook by default (short version: no existing hook infrastructure in this repository, and a hook would duplicate enforcement `deliver` already provides as part of its own flow). An optional, user-installed `pre-commit` + `pre-push` hook pair now exists as a backstop against running `git commit`/`git push` by hand and bypassing the skill entirely -- it delegates to the exact same contract via `scripts/hook_runner.py`, never a second implementation:
+
+```python
+from pathlib import Path
+from scripts.install_hooks import install, uninstall
+
+install(repo_root=Path("."), deliver_root=Path("path/to/skills/deliver"))
+# ... later, to remove it:
+uninstall(repo_root=Path("."))
+```
+
+`install` refuses (raises `HookConflictError`) rather than overwriting a hook it didn't write itself, and never touches `git config` -- it writes/removes two files in the repo's existing hooks directory (`git rev-parse --git-path hooks`, which is shared across all of a repo's worktrees, not per-worktree). This is optional and off by default; `deliver`'s own Section 6 step above is the actual enforcement regardless of whether a hook is installed.
 
 ## Push through confirmed, safe cleanup (Section 9)
 

@@ -41,6 +41,10 @@ Three things, each driven live against a real git fixture repo with `deliver` in
 
 **3. Resume/finish.** All three harnesses, given an existing branch with one empty WIP commit and asked to resume rather than start fresh, correctly detected it via real git inspection (OpenCode additionally chained into `using-git-worktrees` for the detection step) and proposed reusing it -- none proposed a duplicate branch. **CONFIRMED-WORKING across all three.**
 
+## Git hooks (CtrlCarlitos/skills#23 item 1) -- built
+
+`scripts/hook_runner.py` (non-interactive CLI over `validation_contract.py`'s existing functions, unchanged) and `scripts/install_hooks.py` (install/uninstall a marker-carrying `pre-commit` + `pre-push` pair, worktree-safe, never overwriting an unrelated hook, never touching `git config`). See `references/hooks-decision.md` for the full design and a real hazard this work surfaced: a machine-wide `core.hooksPath` override makes `git rev-parse --git-path hooks` resolve to the same shared, global directory for every repo on the machine, including disposable test fixtures -- a test that wrote through that real resolution overwrote a real file outside its control. Filed as `CtrlCarlitos/agent-guardrails#542` and `CtrlCarlitos/dotfiles#425`; fixed in this work's own test suite by never writing through the real resolution except in one narrow, read-only worktree-equality check.
+
 ## What `references/` covers in full
 
 - `compatibility-map.md` -- the skill-by-skill handoff table and the "what deliver does not duplicate" section.
