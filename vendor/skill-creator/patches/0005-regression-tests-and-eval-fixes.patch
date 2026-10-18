@@ -21,7 +21,6 @@ so it's testable without sys.platform or a real subprocess, adds a
 tests/ directory covering it, the UTF-8-everywhere invariant from patch
 0002, --project-root resolution from patch 0003, and validate_skill/
 package_skill with spaces and non-ASCII characters in the skill's path,
-and updates the SKILL.md fork note to mention these fixes.
 diff --git a/skills/skill-creator/SKILL.md b/skills/skill-creator/SKILL.md
 index 675dce4..b9bfcd6 100644
 --- a/skills/skill-creator/SKILL.md
@@ -349,10 +348,10 @@ new file mode 100644
 index 0000000..e69de29
 diff --git a/skills/skill-creator/tests/test_find_project_root.py b/skills/skill-creator/tests/test_find_project_root.py
 new file mode 100644
-index 0000000..e6b6877
+index 0000000..5f82571
 --- /dev/null
 +++ b/skills/skill-creator/tests/test_find_project_root.py
-@@ -0,0 +1,67 @@
+@@ -0,0 +1,78 @@
 +"""Regression tests for patch 0003 (--project-root / find_project_root()).
 +
 +find_project_root() mimics how Claude Code discovers its project root, by
@@ -364,6 +363,7 @@ index 0000000..e6b6877
 +Run from skills/skill-creator/: python3 -m unittest discover -s tests
 +"""
 +import os
++import shutil
 +import tempfile
 +import unittest
 +from pathlib import Path
@@ -372,50 +372,60 @@ index 0000000..e6b6877
 +
 +
 +class FindProjectRootTests(unittest.TestCase):
++    def _make_dir(self) -> Path:
++        """A temp dir cleaned up via addCleanup, never a `with` block.
++
++        Windows can't remove a directory that is still the process's cwd
++        (POSIX allows this; Windows doesn't), so cwd must be restored
++        before cleanup runs. addCleanup runs LIFO, so as long as _chdir()
++        is called after _make_dir() for the same directory, the chdir-back
++        registered by _chdir() fires before this rmtree.
++        """
++        path = Path(tempfile.mkdtemp()).resolve()
++        self.addCleanup(shutil.rmtree, path, ignore_errors=True)
++        return path
++
 +    def _chdir(self, path: Path) -> None:
 +        original = Path.cwd()
 +        os.chdir(path)
 +        self.addCleanup(os.chdir, original)
 +
 +    def test_finds_nearest_ancestor_with_dot_claude(self):
-+        with tempfile.TemporaryDirectory() as root:
-+            root = Path(root).resolve()
-+            (root / ".claude").mkdir()
-+            nested = root / "a" / "b" / "c"
-+            nested.mkdir(parents=True)
-+            self._chdir(nested)
++        root = self._make_dir()
++        (root / ".claude").mkdir()
++        nested = root / "a" / "b" / "c"
++        nested.mkdir(parents=True)
++        self._chdir(nested)
 +
-+            self.assertEqual(find_project_root(), root)
++        self.assertEqual(find_project_root(), root)
 +
 +    def test_falls_back_to_cwd_when_no_dot_claude_found(self):
-+        with tempfile.TemporaryDirectory() as root:
-+            root = Path(root).resolve()
-+            nested = root / "a" / "b"
-+            nested.mkdir(parents=True)
-+            self._chdir(nested)
++        root = self._make_dir()
++        nested = root / "a" / "b"
++        nested.mkdir(parents=True)
++        self._chdir(nested)
 +
-+            # No .claude/ anywhere above `nested` inside this isolated tree,
-+            # so the walk reaches the real filesystem root. It must not
-+            # raise, and must land on an ancestor of (or equal to) cwd.
-+            found = find_project_root()
-+            self.assertIn(found, [nested, *nested.parents])
++        # No .claude/ anywhere above `nested` inside this isolated tree,
++        # so the walk reaches the real filesystem root. It must not
++        # raise, and must land on an ancestor of (or equal to) cwd.
++        found = find_project_root()
++        self.assertIn(found, [nested, *nested.parents])
 +
 +    def test_project_root_flag_overrides_discovery(self):
 +        """main()'s `Path(args.project_root).resolve() if args.project_root else
 +        find_project_root()` must prefer an explicit --project-root over
 +        walking up from cwd, even when cwd has its own (different) .claude/.
 +        """
-+        with tempfile.TemporaryDirectory() as cwd_root, tempfile.TemporaryDirectory() as explicit_root:
-+            cwd_root = Path(cwd_root).resolve()
-+            explicit_root = Path(explicit_root).resolve()
-+            (cwd_root / ".claude").mkdir()
-+            self._chdir(cwd_root)
++        cwd_root = self._make_dir()
++        explicit_root = self._make_dir()
++        (cwd_root / ".claude").mkdir()
++        self._chdir(cwd_root)
 +
-+            args_project_root = str(explicit_root)
-+            resolved = Path(args_project_root).resolve() if args_project_root else find_project_root()
++        args_project_root = str(explicit_root)
++        resolved = Path(args_project_root).resolve() if args_project_root else find_project_root()
 +
-+            self.assertEqual(resolved, explicit_root)
-+            self.assertNotEqual(resolved, cwd_root)
++        self.assertEqual(resolved, explicit_root)
++        self.assertNotEqual(resolved, cwd_root)
 +
 +
 +if __name__ == "__main__":
