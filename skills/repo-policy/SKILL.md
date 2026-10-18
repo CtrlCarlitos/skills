@@ -9,8 +9,10 @@ Audit a GitHub repository against a configurable policy, report the differences,
 
 ### 1. Inspect (always read-only)
 
+Run from this skill's directory (`skills/repo-policy/`):
+
 ```bash
-python3 scripts/audit.py <owner> <repo> --repo-root <path to the local checkout>
+python3 -m scripts.audit <owner> <repo> --repo-root <path to the local checkout>
 ```
 
 This never mutates anything -- it only calls `gh api` GET endpoints and reads files. It prints which policy source is in effect, then the Markdown matrix. Show the matrix to the user verbatim; it's the deliverable for "check our repo settings," not something to paraphrase or summarize away.
@@ -35,7 +37,7 @@ Three different mechanisms, by category — use the one that matches:
 
 ### 5. Verify
 
-Re-run `scripts/audit.py`. Confirm the rows that were just applied now show `None`. Report the before/after explicitly — "was X, now Y" — not just "done."
+Re-run `python3 -m scripts.audit`. Confirm the rows that were just applied now show `None`. Report the before/after explicitly — "was X, now Y" — not just "done."
 
 ## Policy
 
