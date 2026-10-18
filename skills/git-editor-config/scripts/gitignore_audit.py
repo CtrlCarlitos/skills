@@ -16,13 +16,19 @@ def find_tracked_generated_files(files: list[dict]) -> list[dict]:
         result = classify_file(file)
         if result is None or "-text" not in result["attrs"]:
             continue
-        gaps.append({"path": file["path"], "reason": result["reason"]})
+        gaps.append({
+            "path": file["path"],
+            "reason": f"{result['reason']} -- tracked but looks generated; after adding to .gitignore, also `git rm --cached` it",
+        })
     return gaps
 
 
 def find_unignored_generated_files(repo_root: Path, run=subprocess.run) -> list[dict]:
+    # --untracked-files=all lists each file inside an untracked directory
+    # individually, rather than collapsing it to one "?? dir/" line -- the
+    # collapsed form would make the read below raise IsADirectoryError.
     result = run(
-        ["git", "status", "--porcelain", "--ignored=no", "--", "."],
+        ["git", "status", "--porcelain", "--ignored=no", "--untracked-files=all", "-z", "--", "."],
         cwd=repo_root,
         capture_output=True,
         text=True,
@@ -30,12 +36,12 @@ def find_unignored_generated_files(repo_root: Path, run=subprocess.run) -> list[
     )
 
     gaps = []
-    for line in result.stdout.splitlines():
-        if not line.startswith("?? "):
+    for entry in result.stdout.split("\0"):
+        if not entry.startswith("?? "):
             continue
-        path = line[3:]
+        path = entry[3:]
         chunk = (Path(repo_root) / path).read_bytes()[:_SNIFF_BYTES]
         if _is_binary(chunk):
-            gaps.append({"path": path})
+            gaps.append({"path": path, "reason": "untracked, looks generated (binary content) -- consider adding to .gitignore"})
 
     return gaps

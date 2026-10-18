@@ -1,12 +1,26 @@
 """Gathers raw, judgment-free facts about a repo's tracked files: git's own
-mode bits (via `ls-files -s`), whether the file starts with a shebang, and a
-binary-content signal (a null byte in the first chunk of the file). No
-classification happens here -- that's classify.py's job.
+mode bits (via `ls-files -s -z`), whether the file starts with a shebang,
+and a binary-content signal (a null byte in the first chunk of the file).
+No classification happens here -- that's classify.py's job.
+
+Uses `-z` (NUL-separated, unquoted paths) rather than plain `ls-files -s`,
+which quotes any path containing non-ASCII bytes (e.g. `"caf\\303\\251.sh"`
+instead of `café.sh`) and would otherwise point this module at a path that
+doesn't exist on disk.
+
+Submodule gitlinks (mode 160000) and symlinks (mode 120000) are reported
+with no content signal -- a gitlink's "file" may not exist on disk at all
+(an uninitialized submodule), and Python's file I/O follows a symlink to
+whatever it points at, which can be a directory. Neither is meaningful
+content to sniff for shebang/binary purposes. A tracked path missing from
+the working tree (deleted without being committed, or pruned by a sparse
+checkout) gets the same no-signal treatment rather than crashing.
 """
 import subprocess
 from pathlib import Path
 
 _SNIFF_BYTES = 8000
+_NO_CONTENT_MODES = {"160000", "120000"}
 
 
 def _is_binary(chunk: bytes) -> bool:
@@ -15,7 +29,7 @@ def _is_binary(chunk: bytes) -> bool:
 
 def scan_tracked_files(repo_root: Path, run=subprocess.run) -> list[dict]:
     result = run(
-        ["git", "ls-files", "-s"],
+        ["git", "ls-files", "-s", "-z"],
         cwd=repo_root,
         capture_output=True,
         text=True,
@@ -23,15 +37,21 @@ def scan_tracked_files(repo_root: Path, run=subprocess.run) -> list[dict]:
     )
 
     files = []
-    for line in result.stdout.splitlines():
-        if not line:
+    for entry in result.stdout.split("\0"):
+        if not entry:
             continue
-        meta, path = line.split("\t", 1)
+        meta, path = entry.split("\t", 1)
         mode = meta.split()[0]
 
-        chunk = (Path(repo_root) / path).read_bytes()[:_SNIFF_BYTES]
-        has_shebang = chunk[:2] == b"#!"
-        is_binary = _is_binary(chunk)
+        has_shebang = False
+        is_binary = False
+        if mode not in _NO_CONTENT_MODES:
+            try:
+                chunk = (Path(repo_root) / path).read_bytes()[:_SNIFF_BYTES]
+            except (FileNotFoundError, IsADirectoryError):
+                chunk = b""
+            has_shebang = chunk[:2] == b"#!"
+            is_binary = _is_binary(chunk)
 
         files.append({
             "path": path,

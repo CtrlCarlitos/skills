@@ -44,6 +44,76 @@ class ScanTrackedFilesTests(unittest.TestCase):
             self.assertFalse(files["notes.txt"]["is_binary"])
             self.assertTrue(files["photo.png"]["is_binary"])
 
+    def test_a_large_real_text_file_scanned_through_the_real_function_is_not_binary(self):
+        # Review Focus #2, exercised through the real function rather than a
+        # hand-built dict -- the earlier version of this test passed
+        # is_binary=False straight into classify_file, which never actually
+        # ran the sniff.
+        with tempfile.TemporaryDirectory() as root:
+            repo = Path(root)
+            _init_repo(repo)
+            (repo / "bundle.min.js").write_text("var x=1;" * 5000, encoding="utf-8")
+            _run(["git", "add", "-A"], repo)
+            _run(["git", "commit", "-q", "-m", "init"], repo)
+
+            files = {f["path"]: f for f in scan_tracked_files(repo)}
+
+            self.assertFalse(files["bundle.min.js"]["is_binary"])
+
+    def test_non_ascii_filename_does_not_crash(self):
+        with tempfile.TemporaryDirectory() as root:
+            repo = Path(root)
+            _init_repo(repo)
+            (repo / "café.sh").write_text("#!/bin/bash\n", encoding="utf-8")
+            _run(["git", "add", "-A"], repo)
+            _run(["git", "commit", "-q", "-m", "init"], repo)
+
+            files = {f["path"]: f for f in scan_tracked_files(repo)}
+
+            self.assertIn("café.sh", files)
+            self.assertTrue(files["café.sh"]["has_shebang"])
+
+    def test_a_tracked_file_deleted_from_the_working_tree_does_not_crash(self):
+        with tempfile.TemporaryDirectory() as root:
+            repo = Path(root)
+            _init_repo(repo)
+            (repo / "gone.txt").write_text("bye\n", encoding="utf-8")
+            _run(["git", "add", "-A"], repo)
+            _run(["git", "commit", "-q", "-m", "init"], repo)
+            (repo / "gone.txt").unlink()
+
+            files = {f["path"]: f for f in scan_tracked_files(repo)}
+
+            self.assertFalse(files["gone.txt"]["has_shebang"])
+            self.assertFalse(files["gone.txt"]["is_binary"])
+
+    def test_a_submodule_gitlink_entry_does_not_crash(self):
+        with tempfile.TemporaryDirectory() as root:
+            repo = Path(root)
+            _init_repo(repo)
+            (repo / "vendor_sub").mkdir()
+            _run(["git", "update-index", "--add", "--cacheinfo", f"160000,{'1' * 40},vendor_sub"], repo)
+            _run(["git", "commit", "-q", "-m", "init"], repo)
+
+            files = {f["path"]: f for f in scan_tracked_files(repo)}
+
+            self.assertFalse(files["vendor_sub"]["has_shebang"])
+            self.assertFalse(files["vendor_sub"]["is_binary"])
+
+    def test_a_symlink_to_a_directory_does_not_crash(self):
+        with tempfile.TemporaryDirectory() as root:
+            repo = Path(root)
+            _init_repo(repo)
+            (repo / "real_dir").mkdir()
+            (repo / "link_to_dir").symlink_to("real_dir", target_is_directory=True)
+            _run(["git", "add", "-A"], repo)
+            _run(["git", "commit", "-q", "-m", "init"], repo)
+
+            files = {f["path"]: f for f in scan_tracked_files(repo)}
+
+            self.assertFalse(files["link_to_dir"]["has_shebang"])
+            self.assertFalse(files["link_to_dir"]["is_binary"])
+
 
 if __name__ == "__main__":
     unittest.main()

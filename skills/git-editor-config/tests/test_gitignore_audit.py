@@ -47,6 +47,26 @@ class FindUnignoredGeneratedFilesTests(unittest.TestCase):
             gaps = find_unignored_generated_files(repo)
 
             self.assertEqual([g["path"] for g in gaps], ["cache.bin"])
+            # Every row must carry a "reason" -- report.py's .gitignore gaps
+            # table has a Reason column, and renders every row through it.
+            self.assertIn("reason", gaps[0])
+
+    def test_reports_a_binary_file_inside_an_untracked_directory_without_crashing(self):
+        # `git status --porcelain` (no --untracked-files=all) collapses an
+        # untracked directory to a single "?? build/" line; reading that
+        # line's "path" as a file raises IsADirectoryError.
+        with tempfile.TemporaryDirectory() as root:
+            repo = Path(root)
+            _init_repo(repo)
+            (repo / "README.md").write_text("hello\n", encoding="utf-8")
+            _run(["git", "add", "README.md"], repo)
+            _run(["git", "commit", "-q", "-m", "init"], repo)
+            (repo / "build").mkdir()
+            (repo / "build" / "out.bin").write_bytes(b"\x00\x01binary")
+
+            gaps = find_unignored_generated_files(repo)
+
+            self.assertEqual([g["path"] for g in gaps], ["build/out.bin"])
 
     def test_skips_already_ignored_file(self):
         with tempfile.TemporaryDirectory() as root:

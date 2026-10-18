@@ -3,6 +3,7 @@
 Run from skills/git-editor-config/: python3 -m unittest discover -s tests
 """
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -30,7 +31,7 @@ class AuditCliTests(unittest.TestCase):
             _run(["git", "commit", "-q", "-m", "init"], repo)
 
             result = subprocess.run(
-                ["python3", "-m", "scripts.audit", str(repo)],
+                [sys.executable, "-m", "scripts.audit", str(repo)],
                 cwd=_SKILL_ROOT,
                 capture_output=True,
                 text=True,
@@ -39,6 +40,28 @@ class AuditCliTests(unittest.TestCase):
 
             self.assertIn("deploy.patch", result.stdout)
             self.assertIn("eol=lf", result.stdout)
+
+    def test_does_not_crash_with_an_untracked_binary_file_present(self):
+        # Regression: the .gitignore check used to omit "reason" from its
+        # row, which crashed report.py's rendering the moment this exact
+        # scenario -- the one the check exists to find -- actually occurred.
+        with tempfile.TemporaryDirectory() as root:
+            repo = Path(root)
+            _init_repo(repo)
+            (repo / "README.md").write_text("hello\n", encoding="utf-8")
+            _run(["git", "add", "-A"], repo)
+            _run(["git", "commit", "-q", "-m", "init"], repo)
+            (repo / "cache.bin").write_bytes(b"\x00\x01binary")
+
+            result = subprocess.run(
+                [sys.executable, "-m", "scripts.audit", str(repo)],
+                cwd=_SKILL_ROOT,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+
+            self.assertIn("cache.bin", result.stdout)
 
 
 if __name__ == "__main__":
