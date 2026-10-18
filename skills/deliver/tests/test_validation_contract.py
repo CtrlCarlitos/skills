@@ -11,6 +11,7 @@ artifact this tool has to handle correctly.
 
 Run from skills/deliver/: python3 -m unittest discover -s tests
 """
+import sys
 import unittest
 from pathlib import Path
 
@@ -82,11 +83,20 @@ class BuildLocalValidationContractTests(unittest.TestCase):
         self.assertEqual(statuses["known-flaky check"], "optional")
 
 
+def _py(code: str) -> str:
+    """A command string that runs `code` under this same Python
+    interpreter -- valid as a single command under both a POSIX shell
+    and Windows PowerShell, unlike shell-builtin syntax (`true`/`false`,
+    `test "$(...)"`, `;`), none of which exist, or mean the same thing,
+    under pwsh -- confirmed live on windows-latest CI."""
+    return f'{sys.executable} -c "{code}"'
+
+
 class RunContractTests(unittest.TestCase):
     def test_runs_each_entry_and_reports_pass_fail(self):
         contract = [
-            {"job": "build", "step_name": "a passing check", "command": "true", "working_directory": None, "status": "required"},
-            {"job": "build", "step_name": "a failing check", "command": "false", "working_directory": None, "status": "required"},
+            {"job": "build", "step_name": "a passing check", "command": _py("import sys; sys.exit(0)"), "working_directory": None, "status": "required"},
+            {"job": "build", "step_name": "a failing check", "command": _py("import sys; sys.exit(1)"), "working_directory": None, "status": "required"},
         ]
 
         results = run_contract(contract, REPO_ROOT)
@@ -100,7 +110,7 @@ class RunContractTests(unittest.TestCase):
             {
                 "job": "build",
                 "step_name": "pwd check",
-                "command": "test \"$(basename \"$PWD\")\" = skills",
+                "command": _py("import os; print(os.path.basename(os.getcwd()))"),
                 "working_directory": "skills",
                 "status": "required",
             }
@@ -109,16 +119,67 @@ class RunContractTests(unittest.TestCase):
         results = run_contract(contract, REPO_ROOT)
 
         self.assertTrue(results[0]["passed"])
+        self.assertIn("skills", results[0]["output"])
 
     def test_a_real_failing_command_reports_its_output(self):
         contract = [
-            {"job": "build", "step_name": "echo then fail", "command": "echo something-specific; exit 1", "working_directory": None, "status": "required"}
+            {
+                "job": "build",
+                "step_name": "echo then fail",
+                "command": _py("print('something-specific'); import sys; sys.exit(1)"),
+                "working_directory": None,
+                "status": "required",
+            }
         ]
 
         results = run_contract(contract, REPO_ROOT)
 
         self.assertFalse(results[0]["passed"])
         self.assertIn("something-specific", results[0]["output"])
+
+    def test_uses_pwsh_on_windows_so_the_command_matches_what_ci_actually_runs(self):
+        """GitHub Actions' windows-latest runners execute `run:` steps
+        through PowerShell (pwsh) by default -- confirmed live in this
+        project's own CI log (`shell: C:\\...\\pwsh.EXE`). subprocess's
+        own shell=True default on Windows is cmd.exe, which parses `;`
+        and other POSIX-shell syntax differently (or not at all) --
+        silently reproducing CI's checks through the wrong shell."""
+        calls = []
+
+        def fake_run(args, **kwargs):
+            calls.append(args)
+
+            class R:
+                returncode = 0
+                stdout = ""
+                stderr = ""
+
+            return R()
+
+        contract = [{"job": "build", "step_name": "x", "command": "echo hi", "working_directory": None, "status": "required"}]
+
+        run_contract(contract, REPO_ROOT, run=fake_run, system=lambda: "Windows")
+
+        self.assertEqual(calls, [["pwsh", "-NoLogo", "-NoProfile", "-Command", "echo hi"]])
+
+    def test_does_not_use_pwsh_on_non_windows(self):
+        calls = []
+
+        def fake_run(args, **kwargs):
+            calls.append((args, kwargs.get("shell")))
+
+            class R:
+                returncode = 0
+                stdout = ""
+                stderr = ""
+
+            return R()
+
+        contract = [{"job": "build", "step_name": "x", "command": "echo hi", "working_directory": None, "status": "required"}]
+
+        run_contract(contract, REPO_ROOT, run=fake_run, system=lambda: "Linux")
+
+        self.assertEqual(calls, [("echo hi", True)])
 
 
 if __name__ == "__main__":

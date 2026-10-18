@@ -5,6 +5,7 @@ what CI actually runs, map each runnable step to the exact local command
 instead of silently dropping them, and classify `continue-on-error`
 steps as optional rather than required.
 """
+import platform
 import subprocess
 
 import yaml
@@ -51,16 +52,29 @@ def build_local_validation_contract(steps: list[dict]) -> tuple[list[dict], list
     return contract, ci_only
 
 
-def run_contract(contract: list[dict], repo_root, run=subprocess.run) -> list[dict]:
+def run_contract(contract: list[dict], repo_root, run=subprocess.run, system=platform.system) -> list[dict]:
     """Runs each entry's command through the shell (these are literal
     GitHub Actions `run:` blocks -- single or multi-line shell scripts,
     not argv lists) from its declared working directory, relative to
     repo_root. Returns one result per entry: the original fields plus
-    "passed", "returncode", "output"."""
+    "passed", "returncode", "output".
+
+    On Windows, routes through `pwsh` explicitly rather than
+    subprocess's own shell=True default (cmd.exe) -- confirmed live on
+    windows-latest CI that GitHub Actions' `run:` steps execute through
+    PowerShell there, not cmd, so reproducing them through cmd.exe can
+    silently run different (or invalid) syntax than CI actually ran."""
+    is_windows = system() == "Windows"
     results = []
     for entry in contract:
         cwd = repo_root / entry["working_directory"] if entry["working_directory"] else repo_root
-        result = run(entry["command"], shell=True, cwd=cwd, capture_output=True, text=True)
+        if is_windows:
+            result = run(
+                ["pwsh", "-NoLogo", "-NoProfile", "-Command", entry["command"]],
+                cwd=cwd, capture_output=True, text=True,
+            )
+        else:
+            result = run(entry["command"], shell=True, cwd=cwd, capture_output=True, text=True)
         results.append({
             **entry,
             "passed": result.returncode == 0,

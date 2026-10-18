@@ -27,6 +27,10 @@ A fresh subagent was given `SKILL.md`, the real `validation_contract.py`, and a 
 
 That is a real wording gap, found by the eval, not asserted in advance. Fixed in `SKILL.md`'s Section 6: the "evidence must be for the current tree" rule is now its own standalone bullet, explicitly general ("not just an autofix special case"), with the autofix case kept as one example application of it rather than the rule's only stated home.
 
+### Real windows-latest CI signal: `run_contract` was reproducing CI through the wrong shell
+
+Confirmed live, not suspected: this PR's own first CI run failed on `skill-creator-tests-windows` with two real `validation_contract.py` test failures. Root cause: `run_contract` passed each command to `subprocess.run(..., shell=True)`, which on Windows resolves to `cmd.exe` by default -- but the same CI job's own log shows GitHub Actions' `windows-latest` runner actually executes `run:` steps through `C:\Program Files\PowerShell\7\pwsh.EXE`, not cmd. POSIX-shell syntax in a command (`;` as a separator, `test "$(basename "$PWD")" = skills`) means something different, or nothing at all, under cmd -- so the contract could silently "pass" a command that would have failed under the shell CI actually uses, or vice versa. Fixed by routing `run_contract` through `pwsh -NoLogo -NoProfile -Command <command>` explicitly on Windows (confirmed via dependency-injected `system`/`run`, the same pattern `release-notes`/`update-docs` used for their own Windows-specific `shell=True` fixes), and rewrote the test fixtures themselves to use cross-shell-safe Python-based commands (`sys.executable -c "..."`) instead of shell-builtin syntax that doesn't exist, or doesn't mean the same thing, under both bash and pwsh.
+
 ## What `references/` covers in full
 
 - `compatibility-map.md` -- the skill-by-skill handoff table and the "what deliver does not duplicate" section.
