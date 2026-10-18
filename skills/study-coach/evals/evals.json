@@ -27,6 +27,41 @@
       "description": "Invoking the skill's real entry-point command(s) with no explicit workspace override must never write family data inside this repo's own checkout.",
       "status": "documented-not-yet-run",
       "verification": "Needs a live check once Plan 3's actual parent-facing entry-point commands exist to invoke with a default path and confirm where they write. This plan's functions all take an explicit workspace: Path argument with no built-in default, so there is no code path yet that could default into this repo, but there is also no entry-point command yet to exercise end-to-end."
+    },
+    {
+      "id": "open-response-never-silently-graded",
+      "category": "exam",
+      "description": "An open/free-response question must grade as None at every stage (grade_answer, score_exam, needs_review, aggregate_topic_results) -- never guessed True or False, and never silently inflating or deflating a topic's score before a parent/Claude review grade is actually merged in.",
+      "status": "verified-live",
+      "verification": "tests/test_grading.py::test_open_response_always_returns_none, tests/test_grading.py::ScoreExamTests, tests/test_results.py::NeedsReviewTests, tests/test_report.py::test_an_unreviewed_open_response_question_counts_toward_total_but_not_correct."
+    },
+    {
+      "id": "unreviewed-answer-never-inflates-a-topic-score",
+      "category": "exam",
+      "description": "A still-ungraded (None) result counts toward a topic's total question count but never toward its correct count, so an unreviewed open-response question can't make a topic look stronger than it's actually shown to be.",
+      "status": "verified-live",
+      "verification": "tests/test_report.py::test_an_unreviewed_open_response_question_counts_toward_total_but_not_correct."
+    },
+    {
+      "id": "exam-history-accumulates-not-overwrites",
+      "category": "exam",
+      "description": "A second exam taken for a subject must accumulate in the child's exam_history.json, never overwrite a prior exam's entry -- the longitudinal dashboard view depends on a real history existing.",
+      "status": "verified-live",
+      "verification": "tests/test_dashboard.py::test_a_second_exam_for_the_same_subject_accumulates_rather_than_replacing."
+    },
+    {
+      "id": "insufficient-data-never-reported-as-solid-or-needs-work",
+      "category": "exam",
+      "description": "A topic with too few questions (below the 2-question minimum) must classify as insufficient_data, never a false 'solid' or 'needs_work' off a single data point.",
+      "status": "verified-live",
+      "verification": "tests/test_report.py::test_too_few_questions_is_insufficient_data_regardless_of_score, and the gap_report sort test putting insufficient_data entries last."
+    },
+    {
+      "id": "results-export-lacks-topic-tags-must-be-rejoined",
+      "category": "exam",
+      "description": "The browser's downloaded results export carries only question_id/given_answer/correct, not subject/topic -- found live while writing this plan's own CLI (a real interface gap between the exam page's export shape and the report aggregator's input requirement, not anticipated in the original plan). Any caller aggregating results by topic must re-join against the original exam's question records first.",
+      "status": "verified-live",
+      "verification": "scripts/audit_exam.py's _tag_results_with_exam_metadata, exercised by tests/test_audit_exam.py::test_score_reports_a_gap_and_updates_the_dashboard -- this test originally failed with a real KeyError before the fix, confirming the gap was real, not hypothetical."
     }
   ]
 }

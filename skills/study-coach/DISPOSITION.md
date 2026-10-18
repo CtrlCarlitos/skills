@@ -1,6 +1,6 @@
 # `study-coach`: audit and scope decisions
 
-For the user's own kids (El Salvador, grades ~3rd-5th). This is Plan 1 of 3 for the spec's "study-coach v1" (+1 video plan, deferred to its own later issue). Full design: `docs/superpowers/specs/2026-10-18-study-coach-design.md`.
+For the user's own kids (El Salvador, grades ~3rd-5th). This covers Plans 1 and 2 of 3 for the spec's "study-coach v1" (+1 video plan, deferred to its own later issue). Full design: `docs/superpowers/specs/2026-10-18-study-coach-design.md`.
 
 ## Audit summary
 
@@ -15,11 +15,17 @@ Recorded verbatim from the design doc's "Decided" section, settled before this p
 3. **Multi-child-aware workspace, implemented in this plan:** each kid gets their own partition under the family's home workspace -- not a shared pool that would conflate one kid's results with another's.
 4. **Workspace lives outside this repo by default, implemented in this plan:** `CtrlCarlitos/skills` is a public GitHub repo (confirmed via `gh repo view`); the family's real data (kids' names, grades, exam history, Santillana photos) must never live inside it. Every function in this plan takes an explicit `workspace: Path` argument -- nothing hardcodes or assumes a path inside `skills/study-coach/`.
 5. **Santillana ingestion is ad hoc and accumulating, implemented in this plan:** the parent supplies a photo only when a specific topic actually needs it, not a one-time bulk scan. A second photo for the same subject/topic adds to the cache, never overwrites the first.
-6. **Exam question types and grading split** (not yet built in this plan, recorded here so the next plan's reader has full context): multiple choice, single-select, fill-in-the-blank, true/false, and matching all self-grade client-side in static HTML; open/free response cannot self-grade without a backend, so it's folded into the already-settled "parent brings results back to the next invocation" flow used for persistence in general.
-7. **State persistence despite "no backend":** a static exam/flashcard page cannot silently write back to the workspace. The exam (once built) will produce a results export the parent brings back into the next invocation -- that's the point at which the persisted report and dashboard actually update. Not yet exercised by this plan's code (no exam exists yet), but the workspace layout this plan ships does not preclude it.
+6. **Exam question types and grading split, implemented in Plan 2:** multiple choice, single-select, fill-in-the-blank, true/false, and matching all self-grade client-side in static HTML; open/free response cannot self-grade without a backend, so it's folded into the already-settled "parent brings results back to the next invocation" flow used for persistence in general.
+7. **State persistence despite "no backend", implemented in Plan 2:** the exam page produces a downloadable results export; the parent brings that back into the next invocation, which is where the persisted report and dashboard actually update. Nothing runs or listens continuously.
 
 Non-goals, from the design doc directly: no mobile app, no multi-family/teacher platform, no paid TTS, no other country's curriculum, no general-purpose spaced-repetition engine unless a simpler mechanic proves insufficient.
 
+## Plan 2 scope decisions (judgment calls the spec explicitly left to the builder)
+
+1. **Topic-tagging taxonomy:** a `subject/topic` string key, matching Plan 1's own grounding vocabulary exactly, with an optional free-text `competency` field on each question for finer-grained tagging when the content-generating agent (Plan 3) wants it. No separate formal competency hierarchy in v1 -- the spec noted MINEDUCYT's own published structure varies by subject (Matemática has more formal structure than Lenguaje for this grade range) and asked the builder to size this to what's actually implemented, not to invent a taxonomy ahead of real content.
+2. **Topic-strength thresholds:** `insufficient_data` below 2 questions for a topic, `needs_work` below a 70% correct ratio, `solid` at or above it. Both numbers are a deliberately simple first version per the spec's explicit "start simple" permission -- revisit once real exam data from the user's own kids exists to calibrate against.
+3. **Results-export shape (found live, not anticipated):** the browser's self-grading script exports only `{question_id, given_answer, correct}` per question -- it does not duplicate each question's `subject`/`topic` into every downloaded row, since the original exam file (still available locally to whatever re-invokes `study-coach`) already carries that. Code that aggregates results by topic (`report.py`) must re-join against the exam's own question records first; `scripts/audit_exam.py`'s `score` subcommand does this (`_tag_results_with_exam_metadata`) and is the reference implementation for Plan 3's real entry points to follow.
+
 ## What `references/` covers
 
-Nothing yet -- this plan needed no reference material beyond `SKILL.md` and the spec itself (no policy-lookup chain, no repo-type guides). If a future plan needs one (e.g. the exam question-type taxonomy, or the topic-tagging/competency structure), it belongs here.
+Nothing yet -- neither plan needed reference material beyond `SKILL.md` and the spec itself (no policy-lookup chain, no repo-type guides). If a future plan needs one (e.g. a real competency hierarchy once more subjects are implemented), it belongs here.
