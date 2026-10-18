@@ -80,8 +80,55 @@ point 5) surfaced two real bugs, not just the suspicion the issue raised:
   Installing skill-creator for another harness does not make its
   description-optimization loop run there; this is an existing, documented
   limitation, not something this patch changes or newly claims to fix.
-- Native Windows and macOS runtime smoke tests were not performed — this
-  session only has WSL/Linux. The Windows pipe-reader and macOS diff fixes
-  above are verified by direct unit tests of the extracted logic
-  (`pump_stdout_to_queue`, the `git diff --no-index --ignore-cr-at-eol`
-  invocation itself), not by running `claude -p` on those platforms.
+- A native macOS runtime smoke test was not performed — this session only
+  has WSL/Linux, and GitHub-hosted macOS runners weren't added to CI. The
+  macOS diff fix is verified by a direct unit test of the `git diff
+  --no-index --ignore-cr-at-eol` invocation itself, not by running it on
+  macOS.
+
+## Update: real `windows-latest` CI signal (same PR)
+
+A `windows-latest` CI job was added and, on its first real run, caught
+three genuine bugs no amount of WSL/Linux-only testing would have found
+— confirming the honest-scoping decision above was the right call, not
+just caution for its own sake:
+
+1. **`test_find_project_root`'s tests errored tearing down.**
+   `tempfile.TemporaryDirectory()`'s cleanup ran while cwd was still
+   inside it — POSIX allows removing a directory you're `cd`'d into,
+   Windows doesn't (`PermissionError: [WinError 32]`). The chdir-back was
+   deferred to `addCleanup`, which fires *after* the `with` block's
+   cleanup already ran. Fixed by switching to `tempfile.mkdtemp()` with
+   its own `addCleanup(shutil.rmtree)` registered before the chdir-back's
+   — cleanups run LIFO, so cwd is restored first.
+2. **`ModuleNotFoundError: No module named 'yaml'`.** `quick_validate.py`
+   imports PyYAML, but neither this repo nor upstream ever declared it as
+   a dependency; it only "worked" by the accident of Ubuntu's base image
+   happening to have it preinstalled. Added `requirements.txt` (confirmed
+   via an AST scan to be the only third-party import in the whole tree)
+   and a `pip install -r` step in both CI jobs.
+3. **`UnicodeEncodeError` printing status emoji.** `package_skill.py`
+   prints checkmarks/crosses via plain `print()`, which raises on
+   Windows' default console encoding (cp1252) — the same bug class as
+   patch 0002's file-I/O fix, just for stdout. Reproduced deterministically
+   on *any* OS (not only verified via remote Windows CI) by redirecting
+   `sys.stdout` to a cp1252-encoded stream in a test, confirming the exact
+   traceback locally before fixing. Fixed by reconfiguring stdout to UTF-8
+   at entry.
+
+All three are now fixed and covered by regression tests; the Windows job
+is green. One thing was *not* fixed, deliberately: the `--check` step
+(file-mode comparison) genuinely fails on Windows —
+`git-for-Windows`/NTFS doesn't track Unix executable bits the way Linux
+does, so the comparison reports a mismatch even when file content is
+identical. This is kept in CI as `continue-on-error: true` for
+visibility, never promoted to a required check.
+
+Cross-agent execution parity (Claude Code vs. Codex/OpenCode/Antigravity)
+for the evaluation subprocess (`claude -p ...`) is still **not** tested:
+`run_eval.py`/`run_loop.py` hard-depend on the `claude` CLI specifically,
+and CI doesn't have credentials to invoke it. The three fixes above are
+about the harness's own Python/shell code running correctly on Windows,
+not about proving the `claude -p` round-trip works there — installing
+skill-creator for another harness still does not make its
+description-optimization loop run there.

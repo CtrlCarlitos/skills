@@ -40,12 +40,12 @@ jobs:
       - name: sync-skill-creator.sh diff-portability test
         shell: bash
         run: bash scripts/tests/test_sync_skill_creator.sh
-      # Experimental: core.filemode on Windows/NTFS doesn't track Unix
-      # executable bits the way Linux does, so --check's mode comparison may
-      # behave differently here than on the Linux job. continue-on-error
-      # until we've seen real signal on whether this is flaky or solid;
-      # drop it (and make this job's result required) once confirmed.
-      - name: skill-creator equals upstream pin + patches (experimental)
+      # Known-flaky, permanently non-blocking: confirmed (not just suspected)
+      # that this fails on Windows -- git-for-Windows/NTFS doesn't track Unix
+      # executable bits the way Linux does, so --check's mode comparison
+      # reports a mismatch here even when the content is identical. Kept for
+      # visibility only; see vendor/skill-creator/DISPOSITION.md.
+      - name: skill-creator equals upstream pin + patches (known-flaky mode check)
         shell: bash
         continue-on-error: true
         run: bash scripts/sync-skill-creator.sh --check
