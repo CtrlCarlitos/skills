@@ -21,11 +21,16 @@ jobs:
           echo PASS
       - name: install skill-creator dependencies
         run: pip install -r skills/skill-creator/requirements.txt
+      - name: install repo-policy dependencies
+        run: pip install -r skills/repo-policy/requirements.txt
       - name: skill-creator regression tests
         working-directory: skills/skill-creator
         run: python3 -m unittest discover -s tests -v
       - name: show-me regression tests
         working-directory: skills/show-me
+        run: python3 -m unittest discover -s tests -v
+      - name: repo-policy regression tests
+        working-directory: skills/repo-policy
         run: python3 -m unittest discover -s tests -v
       - name: sync-vendor.sh diff-portability test
         run: bash scripts/tests/test_sync_vendor.sh
@@ -57,11 +62,16 @@ jobs:
           python-version: "3.x"
       - name: install skill-creator dependencies
         run: pip install -r skills/skill-creator/requirements.txt
+      - name: install repo-policy dependencies
+        run: pip install -r skills/repo-policy/requirements.txt
       - name: skill-creator regression tests
         working-directory: skills/skill-creator
         run: python -m unittest discover -s tests -v
       - name: show-me regression tests
         working-directory: skills/show-me
+        run: python -m unittest discover -s tests -v
+      - name: repo-policy regression tests
+        working-directory: skills/repo-policy
         run: python -m unittest discover -s tests -v
       - name: sync-vendor.sh diff-portability test
         shell: bash
@@ -89,11 +99,16 @@ jobs:
           python-version: "3.x"
       - name: install skill-creator dependencies
         run: pip install -r skills/skill-creator/requirements.txt
+      - name: install repo-policy dependencies
+        run: pip install -r skills/repo-policy/requirements.txt
       - name: skill-creator regression tests
         working-directory: skills/skill-creator
         run: python3 -m unittest discover -s tests -v
       - name: show-me regression tests
         working-directory: skills/show-me
+        run: python3 -m unittest discover -s tests -v
+      - name: repo-policy regression tests
+        working-directory: skills/repo-policy
         run: python3 -m unittest discover -s tests -v
       - name: sync-vendor.sh diff-portability test
         run: bash scripts/tests/test_sync_vendor.sh
