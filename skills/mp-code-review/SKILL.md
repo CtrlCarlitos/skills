@@ -1,7 +1,18 @@
 ---
-name: code-review
+name: mp-code-review
 description: "Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes: Standards (does the code follow this repo's documented coding standards?) and Spec (does the code match what the originating issue/spec asked for?). Runs both reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to \"review since X\"."
 ---
+
+> Fork of mattpocock/skills `skills/engineering/code-review` with its `setup-matt-pocock-skills`
+> issue-tracker dependency replaced by a self-sufficient GitHub/GitLab fetch (`scripts/tracker.py`)
+> -- that tracker-setup skill is out of scope for this repo's distribution, and telling a user to
+> run a skill that was never installed is a bug, not a naming issue (see
+> [#7](https://github.com/CtrlCarlitos/skills/issues/7)). Named `mp-code-review`, not upstream's
+> `code-review`: this avoids collision with Claude Code's built-in code review and Superpowers'
+> `receiving-code-review`, the same anti-collision name dotfiles already used for the unmodified
+> upstream skill. Upstream commit, patches, and audit findings: `vendor/mp-code-review/` in
+> CtrlCarlitos/skills. The Standards/Spec two-axis review mechanism itself is unchanged from
+> upstream -- this is a dependency fix, not a review-skill redesign.
 
 Two-axis review of the diff between `HEAD` and a fixed point the user supplies:
 
@@ -9,8 +20,6 @@ Two-axis review of the diff between `HEAD` and a fixed point the user supplies:
 - **Spec**: does the code faithfully implement the originating issue / spec?
 
 Both axes run as **parallel sub-agents** so they don't pollute each other's context, then this skill aggregates their findings.
-
-The issue tracker should have been provided to you. If not, tell the user to run `/setup-matt-pocock-skills`.
 
 ## Process
 
@@ -26,7 +35,7 @@ Before going further, confirm the fixed point resolves (`git rev-parse <fixed-po
 
 Look for the originating spec, in this order:
 
-1. Issue references in the commit messages (`#123`, `Closes #45`, GitLab `!67`, etc.), fetched via the workflow in the tracker doc.
+1. Issue/MR references in the commit messages (`#123`, `Closes #45`, GitLab `!67`, etc.) -- self-contained, no external tracker setup required. Run `scripts/tracker.py`: `detect_remote_host(repo_root)` tells you GitHub or GitLab from the repo's own remote (reads `git config`, not `git remote get-url`, so a `url.*.insteadOf` SSH-alias rewrite never hides the real host); `extract_issue_refs(commit_messages)` finds every reference; `fetch_commands_for(host, ref)` returns the command(s) to try, in order (a GitHub `#N` tries `gh issue view N` then `gh pr view N`, since GitHub shares one numbering space between issues and PRs). If `gh`/`glab` isn't installed, isn't authenticated, or the host isn't recognized, fall through to the next step instead of stalling here.
 2. A path the user passed as an argument.
 3. A spec file under `docs/`, `specs/`, or `.scratch/` matching the branch name or feature.
 4. If nothing is found, ask the user where the spec is. If they say there isn't one, the **Spec** sub-agent will skip and report "no spec available".
