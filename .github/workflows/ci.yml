@@ -17,3 +17,31 @@ jobs:
             grep -q '^name: ' "$f" && grep -q '^description: ' "$f" || { echo "FAIL: $f"; exit 1; }
           done
           echo PASS
+      - name: skill-creator regression tests
+        working-directory: skills/skill-creator
+        run: python3 -m unittest discover -s tests -v
+      - name: sync-skill-creator.sh diff-portability test
+        run: bash scripts/tests/test_sync_skill_creator.sh
+
+  skill-creator-tests-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: skill-creator regression tests
+        working-directory: skills/skill-creator
+        run: python -m unittest discover -s tests -v
+      - name: sync-skill-creator.sh diff-portability test
+        shell: bash
+        run: bash scripts/tests/test_sync_skill_creator.sh
+      # Experimental: core.filemode on Windows/NTFS doesn't track Unix
+      # executable bits the way Linux does, so --check's mode comparison may
+      # behave differently here than on the Linux job. continue-on-error
+      # until we've seen real signal on whether this is flaky or solid;
+      # drop it (and make this job's result required) once confirmed.
+      - name: skill-creator equals upstream pin + patches (experimental)
+        shell: bash
+        continue-on-error: true
+        run: bash scripts/sync-skill-creator.sh --check

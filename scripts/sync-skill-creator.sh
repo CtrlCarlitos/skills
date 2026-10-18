@@ -32,11 +32,15 @@ for patch in "$root"/vendor/skill-creator/patches/*.patch; do
 done
 
 if [ "${1:-}" = "--check" ]; then
-    if diff -r --strip-trailing-cr "$tmp/build/skills/skill-creator" "$target" >/dev/null; then
+    # git diff --no-index, not `diff -r --strip-trailing-cr`: --strip-trailing-cr
+    # is GNU-diffutils-only and stock macOS ships BSD diff, which rejects it
+    # outright. git is already a hard dependency of this script (it clones
+    # upstream), and behaves identically on every platform.
+    if git diff --no-index --ignore-cr-at-eol "$tmp/build/skills/skill-creator" "$target" >/dev/null; then
         printf 'PASS: skills/skill-creator == %s %s@%s + %s patch(es)\n' "$repo" "$path" "${commit:0:12}" "$(ls "$root"/vendor/skill-creator/patches/*.patch 2>/dev/null | wc -l | tr -d ' ')"
     else
         printf 'FAIL: skills/skill-creator drifted from the rebuild; run scripts/sync-skill-creator.sh or fix the patches\n' >&2
-        diff -r --strip-trailing-cr "$tmp/build/skills/skill-creator" "$target" >&2 || true
+        git diff --no-index --ignore-cr-at-eol "$tmp/build/skills/skill-creator" "$target" >&2 || true
         exit 1
     fi
     exit 0

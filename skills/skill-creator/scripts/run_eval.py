@@ -35,6 +35,41 @@ def find_project_root() -> Path:
     return current
 
 
+def find_conflicting_installed_skill(project_root: Path, skill_name: str) -> Path | None:
+    """Return the SKILL.md of a real, already-installed skill with this name, if any.
+
+    The eval harness injects a temporary decoy command to test a candidate
+    description (see run_single_query). If a real skill with the same name
+    is also installed (project- or user-scoped), the model can trigger that
+    unrelated, already-shipped copy instead, and the harness can't tell the
+    two apart — silently measuring the wrong description. Checked eagerly so
+    that contamination is reported, not swallowed into a clean-looking score.
+    """
+    for candidate in (
+        project_root / ".claude" / "skills" / skill_name / "SKILL.md",
+        Path.home() / ".claude" / "skills" / skill_name / "SKILL.md",
+    ):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def pump_stdout_to_queue(out, q: "_queue.Queue") -> None:
+    """Drain a subprocess stdout stream into a queue; None marks EOF.
+
+    Used on Windows, where select.select() only accepts sockets, so the
+    select()+os.read() loop used elsewhere can't poll a subprocess pipe.
+    Runs in a background thread; the caller polls `q` with a timeout the
+    same way select's timeout worked on other platforms.
+    """
+    while True:
+        chunk = out.read1(8192) if hasattr(out, "read1") else out.read(8192)
+        if not chunk:
+            q.put(None)
+            return
+        q.put(chunk)
+
+
 def run_single_query(
     query: str,
     skill_name: str,
@@ -98,14 +133,9 @@ def run_single_query(
         _win_q = None
         if sys.platform == "win32":
             _win_q = _queue.Queue()
-            def _pump(q=_win_q, out=process.stdout):
-                while True:
-                    c = out.read1(8192) if hasattr(out, "read1") else out.read(8192)
-                    if not c:
-                        q.put(None)
-                        return
-                    q.put(c)
-            _threading.Thread(target=_pump, daemon=True).start()
+            _threading.Thread(
+                target=pump_stdout_to_queue, args=(process.stdout, _win_q), daemon=True
+            ).start()
 
         triggered = False
         start_time = time.time()
@@ -206,6 +236,74 @@ def run_single_query(
             command_file.unlink()
 
 
+def summarize(results: list[dict]) -> dict:
+    """Count passed/failed/errored over a list of per-query result dicts.
+
+    A result's `pass` is True, False, or None (errored: no successful run,
+    so it is neither a measured pass nor a measured fail).
+    """
+    return {
+        "total": len(results),
+        "passed": sum(1 for r in results if r["pass"] is True),
+        "failed": sum(1 for r in results if r["pass"] is False),
+        "errored": sum(1 for r in results if r["pass"] is None),
+    }
+
+
+def aggregate_results(
+    eval_set: list[dict],
+    query_outcomes: dict[str, list[bool | BaseException]],
+    trigger_threshold: float = 0.5,
+) -> dict:
+    """Turn raw per-run outcomes into per-query stats and a summary.
+
+    Each outcome is either a bool (a real trigger measurement) or an
+    exception (the run itself failed: subprocess crash, missing `claude`
+    CLI, timeout, etc.). Exceptions are never averaged in as non-triggers —
+    a query with no successful runs is reported as errored, not failed, so
+    a broken harness can't masquerade as a 0% skill score.
+    """
+    results = []
+    for item in eval_set:
+        query = item["query"]
+        should_trigger = item["should_trigger"]
+        outcomes = query_outcomes.get(query, [])
+        triggers = [o for o in outcomes if isinstance(o, bool)]
+        errors = [o for o in outcomes if not isinstance(o, bool)]
+
+        entry = {
+            "query": query,
+            "should_trigger": should_trigger,
+            "runs": len(outcomes),
+            "errors": len(errors),
+        }
+        if triggers:
+            trigger_rate = sum(triggers) / len(triggers)
+            did_pass = (
+                trigger_rate >= trigger_threshold
+                if should_trigger
+                else trigger_rate < trigger_threshold
+            )
+            entry.update({
+                "trigger_rate": trigger_rate,
+                "triggers": sum(triggers),
+                "pass": did_pass,
+            })
+        else:
+            entry.update({
+                "trigger_rate": None,
+                "triggers": 0,
+                "pass": None,
+                "error_messages": [str(e) for e in errors],
+            })
+        results.append(entry)
+
+    return {
+        "results": results,
+        "summary": summarize(results),
+    }
+
+
 def run_eval(
     eval_set: list[dict],
     skill_name: str,
@@ -218,7 +316,17 @@ def run_eval(
     model: str | None = None,
 ) -> dict:
     """Run the full eval set and return results."""
-    results = []
+    conflict = find_conflicting_installed_skill(project_root, skill_name)
+    if conflict:
+        print(
+            f"WARNING: a real skill named '{skill_name}' is already installed at "
+            f"{conflict}. The model may trigger that installed copy's actual "
+            "description instead of the candidate description under test, and "
+            "this harness cannot tell the two apart. Results below may measure "
+            "the wrong description — uninstall or rename the installed copy "
+            "before trusting this score.",
+            file=sys.stderr,
+        )
 
     with ProcessPoolExecutor(max_workers=num_workers) as executor:
         future_to_info = {}
@@ -235,49 +343,38 @@ def run_eval(
                 )
                 future_to_info[future] = (item, run_idx)
 
-        query_triggers: dict[str, list[bool]] = {}
-        query_items: dict[str, dict] = {}
+        query_outcomes: dict[str, list[bool | BaseException]] = {}
         for future in as_completed(future_to_info):
             item, _ = future_to_info[future]
             query = item["query"]
-            query_items[query] = item
-            if query not in query_triggers:
-                query_triggers[query] = []
+            query_outcomes.setdefault(query, [])
             try:
-                query_triggers[query].append(future.result())
+                query_outcomes[query].append(future.result())
             except Exception as e:
-                print(f"Warning: query failed: {e}", file=sys.stderr)
-                query_triggers[query].append(False)
+                print(f"Warning: query run failed (harness error, not a non-trigger): {e}", file=sys.stderr)
+                query_outcomes[query].append(e)
 
-    for query, triggers in query_triggers.items():
-        item = query_items[query]
-        trigger_rate = sum(triggers) / len(triggers)
-        should_trigger = item["should_trigger"]
-        if should_trigger:
-            did_pass = trigger_rate >= trigger_threshold
-        else:
-            did_pass = trigger_rate < trigger_threshold
-        results.append({
-            "query": query,
-            "should_trigger": should_trigger,
-            "trigger_rate": trigger_rate,
-            "triggers": sum(triggers),
-            "runs": len(triggers),
-            "pass": did_pass,
-        })
+    aggregated = aggregate_results(eval_set, query_outcomes, trigger_threshold)
 
-    passed = sum(1 for r in results if r["pass"])
-    total = len(results)
+    if aggregated["summary"]["errored"]:
+        print(
+            f"Warning: {aggregated['summary']['errored']} of "
+            f"{aggregated['summary']['total']} queries had no successful run "
+            "(harness errors) and are excluded from passed/failed counts.",
+            file=sys.stderr,
+        )
 
     return {
         "skill_name": skill_name,
         "description": description,
-        "results": results,
-        "summary": {
-            "total": total,
-            "passed": passed,
-            "failed": total - passed,
-        },
+        "eval_validity_warning": (
+            f"A real skill named '{skill_name}' is already installed at {conflict}; "
+            "results may measure that installed copy instead of this candidate "
+            "description."
+            if conflict
+            else None
+        ),
+        **aggregated,
     }
 
 
