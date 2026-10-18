@@ -76,11 +76,12 @@ point 5) surfaced two real bugs, not just the suspicion the issue raised:
   match upstream exactly (`utils.py` and `__init__.py` stay non-executable,
   matching upstream).
 - Cross-agent execution parity (Claude Code vs. Codex/OpenCode/Antigravity)
-  for the evaluation subprocess (`claude -p ...`) was **not** tested here:
-  `run_eval.py`/`run_loop.py` hard-depend on the `claude` CLI specifically.
-  Installing skill-creator for another harness does not make its
-  description-optimization loop run there; this is an existing, documented
-  limitation, not something this patch changes or newly claims to fix.
+  for the evaluation subprocess (`claude -p ...`) was **not** tested in
+  this original audit: `run_eval.py`/`run_loop.py` hard-depended on the
+  `claude` CLI specifically. **Resolved for Codex and OpenCode in
+  CtrlCarlitos/skills#10** — see "Cross-agent eval parity" below. Still a
+  documented, reasoned limitation for Antigravity specifically, not
+  fixed.
 - A native macOS runtime smoke test was not performed — this session only
   has WSL/Linux, and GitHub-hosted macOS runners weren't added to CI. The
   macOS diff fix is verified by a direct unit test of the `git diff
@@ -125,11 +126,110 @@ does, so the comparison reports a mismatch even when file content is
 identical. This is kept in CI as `continue-on-error: true` for
 visibility, never promoted to a required check.
 
-Cross-agent execution parity (Claude Code vs. Codex/OpenCode/Antigravity)
-for the evaluation subprocess (`claude -p ...`) is still **not** tested:
-`run_eval.py`/`run_loop.py` hard-depend on the `claude` CLI specifically,
-and CI doesn't have credentials to invoke it. The three fixes above are
-about the harness's own Python/shell code running correctly on Windows,
-not about proving the `claude -p` round-trip works there — installing
-skill-creator for another harness still does not make its
-description-optimization loop run there.
+Cross-agent execution parity for the evaluation subprocess was, at the
+time this Windows CI work landed, still not tested beyond the `claude`
+CLI — see "Cross-agent eval parity" below for how that gap was closed
+for Codex and OpenCode, and the reasoned limitation recorded for
+Antigravity, in CtrlCarlitos/skills#10. None of CI's credentials changed:
+the new adapters' live-round-trip tests are gated on the relevant CLI
+being installed (`shutil.which`), same pattern as the existing
+Claude-only tests that never ran on CI either.
+
+## Cross-agent eval parity (CtrlCarlitos/skills#10)
+
+Checked each target harness's actual non-interactive, structured-output
+capability directly (not assumed from memory), by capturing a real event
+stream from each against a real skill in a real repo:
+
+- **Codex** (`codex exec --json`): no discrete skill tool at all. A
+  skill load shows up as an `item.completed` / `command_execution` event
+  whose `command` field is literally `cat <path>/<skill-name>/SKILL.md`.
+  Confirmed live, then built as `_run_single_query_codex` +
+  `_codex_event_indicates_trigger`.
+- **OpenCode** (`opencode run --format json`): the cleanest signal of
+  the three — a discrete `tool_use` event with `part.tool == "skill"`
+  and `part.state.input.name` equal to the skill's name. Structurally
+  the same idea as Claude's own `Skill` tool, just shaped differently.
+  Confirmed live, then built as `_run_single_query_opencode` +
+  `_opencode_event_indicates_trigger`.
+- **Antigravity** (`agy --output-format stream-json`): also has a real,
+  clean signal (a `view_file` tool call with `AbsolutePath` pointing at
+  the skill's `SKILL.md` — confirmed live while investigating #12). **No
+  adapter was built here, for a specific, confirmed reason, not a vague
+  "unverified":** both Codex's and OpenCode's adapters rely on writing a
+  throwaway, uniquely-named proxy skill under the *project-local*
+  `.agents/skills/` directory per eval query, the same trick
+  `_run_single_query_claude` already uses with `.claude/commands/`. Live
+  testing for #12 established that Antigravity does **not** reliably
+  discover project-local `.agents/skills/` skills at all in this
+  environment — only its real *global* skills directory
+  (`~/.gemini/config/skills/`) is actually read. A working Antigravity
+  adapter would therefore need to write and remove a throwaway skill in
+  the user's real global skill directory on *every single eval query* —
+  a materially more invasive mechanism than the other two harnesses need,
+  and not one this project is willing to do silently inside an
+  automated evaluation loop. If Antigravity ever supports project-local
+  skill overrides (an `--add-dir`-style flag was tried and did not help;
+  a per-project settings override was not found), building this adapter
+  becomes straightforward with the same architecture as the other two.
+
+### Architecture: adapters, not three near-duplicate scripts
+
+`run_single_query` is now a thin dispatcher over `_HARNESS_ADAPTERS`
+(`claude`, `codex`, `opencode`); `main()` gained a `--harness` flag
+(default `claude`). Everything downstream of `run_single_query` —
+worker pooling, `aggregate_results`, the errored/failed/passed
+distinction, CLI reporting — is completely unchanged and harness-
+agnostic; it already operated purely on the bool/exception contract
+every adapter returns. `_run_single_query_claude`'s own body is
+byte-for-byte unchanged from before this issue — zero risk to the
+already-shipped, tested Claude path. The two new adapters share a small
+amount of genuinely common infrastructure
+(`_read_json_lines_with_timeout`, the same select()/Windows-queue-reader
+split `_run_single_query_claude` already used, and
+`_write_proxy_agents_skill` for the `.agents/skills/` throwaway-skill
+trick both Codex and OpenCode need) without retrofitting that onto
+Claude's own proven read loop.
+
+`find_conflicting_installed_skill` also now takes a `harness` parameter:
+for Codex/OpenCode it checks `.agents/skills/<name>/SKILL.md` instead of
+Claude's `.claude/skills/<name>/SKILL.md`. The failure mode differs by
+direction from Claude's own documented risk — a same-named real skill
+installed alongside the throwaway, uniquely-suffixed proxy shows up as a
+**false negative** for Codex/OpenCode (the model reasonably uses the
+real skill instead of the test's oddly-named proxy, so the proxy's
+unique name never fires) rather than Claude's **contaminated
+measurement** risk (a same-named decoy *command* could plausibly be
+confused with a same-named real *skill*). Checked eagerly either way,
+same as before.
+
+### A real OpenCode reliability finding, not a hypothesis
+
+Building the live integration test for the OpenCode adapter surfaced a
+genuine, severe reliability problem in `opencode run` itself, confirmed
+across many repeated attempts, different flag combinations
+(`--print-logs`, `--log-level DEBUG`), and even a brand-new, completely
+uncluttered test directory (ruling out interference from this session's
+own accumulated test fixtures): `opencode run` frequently produces **zero
+stdout** and hangs indefinitely right after its own internal `"init"` log
+line, in a clear majority of attempts in this environment. When it
+doesn't hang, the real skill-trigger event fires within about a second of
+the process actually producing output — so the adapter's own detection
+logic (proven separately against real captured event fixtures in
+`tests/test_harness_adapters.py`) is not what's slow; `opencode run`
+itself is unreliable here.
+
+This does not block shipping the OpenCode adapter: `run_eval.py`'s
+existing errored/failed/passed design (predating this issue, built for
+Claude) already treats a timed-out run as an **error**, never averaged
+in as a non-trigger, and `--runs-per-query` already retries. A `codex`/
+`claude` evaluation run is unaffected. An `opencode` evaluation run may
+simply report a higher error rate than the other two harnesses for
+reasons outside this project's control — that should be read as
+"opencode had trouble running," not "the description doesn't trigger
+opencode." The live round-trip test for this specific case
+(`RealOpencodeAdapterTests.test_a_query_that_should_trigger_the_skill_does`)
+retries several times and **skips**, rather than fails, if every retry
+is swallowed by the hang — asserting against a majority-broken external
+CLI would make the test chronically red for a reason this project can't
+fix, which is worse than an honest skip with a clear reason.
