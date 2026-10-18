@@ -9,7 +9,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: skill-creator equals upstream pin + patches
-        run: bash scripts/sync-skill-creator.sh --check
+        run: bash scripts/sync-vendor.sh skill-creator --check
       - name: every SKILL.md has name and description
         run: |
           set -e
@@ -22,8 +22,8 @@ jobs:
       - name: skill-creator regression tests
         working-directory: skills/skill-creator
         run: python3 -m unittest discover -s tests -v
-      - name: sync-skill-creator.sh diff-portability test
-        run: bash scripts/tests/test_sync_skill_creator.sh
+      - name: sync-vendor.sh diff-portability test
+        run: bash scripts/tests/test_sync_vendor.sh
 
   skill-creator-tests-windows:
     runs-on: windows-latest
@@ -42,7 +42,7 @@ jobs:
       - name: skill-creator equals upstream pin + patches (known-flaky mode check)
         shell: bash
         continue-on-error: true
-        run: bash scripts/sync-skill-creator.sh --check
+        run: bash scripts/sync-vendor.sh skill-creator --check
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
@@ -51,9 +51,9 @@ jobs:
       - name: skill-creator regression tests
         working-directory: skills/skill-creator
         run: python -m unittest discover -s tests -v
-      - name: sync-skill-creator.sh diff-portability test
+      - name: sync-vendor.sh diff-portability test
         shell: bash
-        run: bash scripts/tests/test_sync_skill_creator.sh
+        run: bash scripts/tests/test_sync_vendor.sh
 
   skill-creator-tests-macos:
     runs-on: macos-latest
@@ -69,7 +69,7 @@ jobs:
       # from #9 (git diff --no-index --ignore-cr-at-eol, replacing the
       # GNU-only `diff -r --strip-trailing-cr`) actually works on real macOS.
       - name: skill-creator equals upstream pin + patches
-        run: bash scripts/sync-skill-creator.sh --check
+        run: bash scripts/sync-vendor.sh skill-creator --check
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
@@ -78,5 +78,5 @@ jobs:
       - name: skill-creator regression tests
         working-directory: skills/skill-creator
         run: python3 -m unittest discover -s tests -v
-      - name: sync-skill-creator.sh diff-portability test
-        run: bash scripts/tests/test_sync_skill_creator.sh
+      - name: sync-vendor.sh diff-portability test
+        run: bash scripts/tests/test_sync_vendor.sh
