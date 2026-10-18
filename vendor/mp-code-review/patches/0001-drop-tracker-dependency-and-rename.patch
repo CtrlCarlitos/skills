@@ -1,0 +1,325 @@
+mp-code-review: drop the setup-matt-pocock-skills tracker dependency
+
+Replaces the broken "tell the user to run /setup-matt-pocock-skills"
+line and step 2's "fetched via the workflow in the tracker doc" clause
+-- that tracker-setup skill is out of scope for this repo's distribution,
+so both pointed at a config file that never exists here. scripts/tracker.py
+detects the repo's remote (GitHub vs GitLab, reading the raw remote URL
+directly so an SSH-alias rewrite rule never hides the real host --
+confirmed live in this very environment), extracts issue/MR references
+from commit messages, and builds the gh/glab command to fetch each one.
+Also renames the skill to mp-code-review (frontmatter name, not just the
+directory) to resolve the real naming collision with Claude Code's
+built-in code review and Superpowers receiving-code-review -- the same
+anti-collision name dotfiles already uses for the unmodified upstream
+skill.
+
+diff --git a/skills/mp-code-review/LICENSE.txt b/skills/mp-code-review/LICENSE.txt
+new file mode 100644
+index 0000000..f1dd2c0
+--- /dev/null
++++ b/skills/mp-code-review/LICENSE.txt
+@@ -0,0 +1,21 @@
++MIT License
++
++Copyright (c) 2026 Matt Pocock
++
++Permission is hereby granted, free of charge, to any person obtaining a copy
++of this software and associated documentation files (the "Software"), to deal
++in the Software without restriction, including without limitation the rights
++to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++copies of the Software, and to permit persons to whom the Software is
++furnished to do so, subject to the following conditions:
++
++The above copyright notice and this permission notice shall be included in all
++copies or substantial portions of the Software.
++
++THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++SOFTWARE.
+diff --git a/skills/mp-code-review/SKILL.md b/skills/mp-code-review/SKILL.md
+index 373a4f2..47391e4 100644
+--- a/skills/mp-code-review/SKILL.md
++++ b/skills/mp-code-review/SKILL.md
+@@ -1,8 +1,19 @@
+ ---
+-name: code-review
++name: mp-code-review
+ description: "Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes: Standards (does the code follow this repo's documented coding standards?) and Spec (does the code match what the originating issue/spec asked for?). Runs both reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to \"review since X\"."
+ ---
+ 
++> Fork of mattpocock/skills `skills/engineering/code-review` with its `setup-matt-pocock-skills`
++> issue-tracker dependency replaced by a self-sufficient GitHub/GitLab fetch (`scripts/tracker.py`)
++> -- that tracker-setup skill is out of scope for this repo's distribution, and telling a user to
++> run a skill that was never installed is a bug, not a naming issue (see
++> [#7](https://github.com/CtrlCarlitos/skills/issues/7)). Named `mp-code-review`, not upstream's
++> `code-review`: this avoids collision with Claude Code's built-in code review and Superpowers'
++> `receiving-code-review`, the same anti-collision name dotfiles already used for the unmodified
++> upstream skill. Upstream commit, patches, and audit findings: `vendor/mp-code-review/` in
++> CtrlCarlitos/skills. The Standards/Spec two-axis review mechanism itself is unchanged from
++> upstream -- this is a dependency fix, not a review-skill redesign.
++
+ Two-axis review of the diff between `HEAD` and a fixed point the user supplies:
+ 
+ - **Standards**: does the code conform to this repo's documented coding standards?
+@@ -10,8 +21,6 @@ Two-axis review of the diff between `HEAD` and a fixed point the user supplies:
+ 
+ Both axes run as **parallel sub-agents** so they don't pollute each other's context, then this skill aggregates their findings.
+ 
+-The issue tracker should have been provided to you. If not, tell the user to run `/setup-matt-pocock-skills`.
+-
+ ## Process
+ 
+ ### 1. Pin the fixed point
+@@ -26,7 +35,7 @@ Before going further, confirm the fixed point resolves (`git rev-parse <fixed-po
+ 
+ Look for the originating spec, in this order:
+ 
+-1. Issue references in the commit messages (`#123`, `Closes #45`, GitLab `!67`, etc.), fetched via the workflow in the tracker doc.
++1. Issue/MR references in the commit messages (`#123`, `Closes #45`, GitLab `!67`, etc.) -- self-contained, no external tracker setup required. Run `scripts/tracker.py`: `detect_remote_host(repo_root)` tells you GitHub or GitLab from the repo's own remote (reads `git config`, not `git remote get-url`, so a `url.*.insteadOf` SSH-alias rewrite never hides the real host); `extract_issue_refs(commit_messages)` finds every reference; `fetch_commands_for(host, ref)` returns the command(s) to try, in order (a GitHub `#N` tries `gh issue view N` then `gh pr view N`, since GitHub shares one numbering space between issues and PRs). If `gh`/`glab` isn't installed, isn't authenticated, or the host isn't recognized, fall through to the next step instead of stalling here.
+ 2. A path the user passed as an argument.
+ 3. A spec file under `docs/`, `specs/`, or `.scratch/` matching the branch name or feature.
+ 4. If nothing is found, ask the user where the spec is. If they say there isn't one, the **Spec** sub-agent will skip and report "no spec available".
+diff --git a/skills/mp-code-review/scripts/__init__.py b/skills/mp-code-review/scripts/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/skills/mp-code-review/scripts/tracker.py b/skills/mp-code-review/scripts/tracker.py
+new file mode 100644
+index 0000000..f9fcda7
+--- /dev/null
++++ b/skills/mp-code-review/scripts/tracker.py
+@@ -0,0 +1,68 @@
++"""Self-sufficient issue/MR reference detection and fetch command
++construction, replacing upstream's dependency on a tracker doc that only
++exists if `setup-matt-pocock-skills` was run (it isn't, in this repo's
++distribution -- see vendor/mp-code-review/DISPOSITION.md). Detects
++whether the repo's remote is GitHub or GitLab, extracts issue/MR
++references from commit messages, and builds the right `gh`/`glab`
++command to fetch each one -- no tracker-doc dependency at all.
++"""
++import re
++import subprocess
++from pathlib import Path
++
++ISSUE_RE = re.compile(r"(?<!\w)#(\d+)")
++MERGE_REQUEST_RE = re.compile(r"(?<!\w)!(\d+)")
++
++
++def detect_remote_host(repo_root: Path, run=subprocess.run) -> str | None:
++    # `git config --get`, not `git remote get-url`: the latter applies
++    # any `url.<base>.insteadOf` rewrite from the user's gitconfig (a
++    # common multi-account SSH-alias setup, confirmed live in this very
++    # environment -- e.g. https://github.com/X/ rewritten to
++    # git@github-X:) and the rewritten host no longer contains
++    # "github.com" at all. `git config --get` returns the raw stored URL.
++    result = run(
++        ["git", "config", "--get", "remote.origin.url"], cwd=repo_root, capture_output=True, text=True
++    )
++    if result.returncode != 0:
++        return None
++
++    url = result.stdout.strip().lower()
++    if "github.com" in url:
++        return "github"
++    if "gitlab.com" in url:
++        return "gitlab"
++    return None
++
++
++def extract_issue_refs(messages: list[str]) -> list[dict]:
++    seen = set()
++    refs = []
++    for message in messages:
++        for match in ISSUE_RE.finditer(message):
++            ref = ("issue", int(match.group(1)))
++            if ref not in seen:
++                seen.add(ref)
++                refs.append({"kind": "issue", "number": ref[1]})
++        for match in MERGE_REQUEST_RE.finditer(message):
++            ref = ("merge_request", int(match.group(1)))
++            if ref not in seen:
++                seen.add(ref)
++                refs.append({"kind": "merge_request", "number": ref[1]})
++    return refs
++
++
++def fetch_commands_for(host: str | None, ref: dict) -> list[list[str]]:
++    number = str(ref["number"])
++    if host == "github":
++        if ref["kind"] == "issue":
++            # GitHub shares one numbering space between issues and PRs --
++            # the ref could be either, so try issue first (the more likely
++            # case for a spec reference), then fall back to pr.
++            return [["gh", "issue", "view", number], ["gh", "pr", "view", number]]
++        return []
++    if host == "gitlab":
++        if ref["kind"] == "issue":
++            return [["glab", "issue", "view", number]]
++        return [["glab", "mr", "view", number]]
++    return []
+diff --git a/skills/mp-code-review/tests/__init__.py b/skills/mp-code-review/tests/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/skills/mp-code-review/tests/test_tracker.py b/skills/mp-code-review/tests/test_tracker.py
+new file mode 100644
+index 0000000..174dcc7
+--- /dev/null
++++ b/skills/mp-code-review/tests/test_tracker.py
+@@ -0,0 +1,153 @@
++"""Tests for the self-sufficient issue/MR reference detection and fetch
++mechanism that replaces upstream's dependency on Matt Pocock's
++`setup-matt-pocock-skills` tracker doc (which dotfiles never installs --
++see vendor/mp-code-review/DISPOSITION.md for the full rationale).
++
++Uses real git repos for remote-detection (not mocked subprocess output,
++since this is about parsing `git remote`'s actual output shape), and
++plain unit tests for the regex/command-construction logic.
++
++Run from skills/mp-code-review/: python3 -m unittest discover -s tests
++"""
++import subprocess
++import tempfile
++import unittest
++from pathlib import Path
++
++from scripts.tracker import detect_remote_host, extract_issue_refs, fetch_commands_for
++
++
++def _run(args, cwd):
++    return subprocess.run(args, cwd=cwd, check=True, capture_output=True, text=True)
++
++
++def _init_repo_with_remote(root: Path, url: str) -> None:
++    _run(["git", "init", "-q", "-b", "main"], root)
++    _run(["git", "remote", "add", "origin", url], root)
++
++
++class DetectRemoteHostTests(unittest.TestCase):
++    def test_detects_github_from_an_https_remote(self):
++        with tempfile.TemporaryDirectory() as root:
++            root = Path(root)
++            _init_repo_with_remote(root, "https://github.com/CtrlCarlitos/skills.git")
++
++            self.assertEqual(detect_remote_host(root), "github")
++
++    def test_detects_github_from_an_ssh_remote(self):
++        with tempfile.TemporaryDirectory() as root:
++            root = Path(root)
++            _init_repo_with_remote(root, "git@github.com:CtrlCarlitos/skills.git")
++
++            self.assertEqual(detect_remote_host(root), "github")
++
++    def test_detects_gitlab_from_an_https_remote(self):
++        with tempfile.TemporaryDirectory() as root:
++            root = Path(root)
++            _init_repo_with_remote(root, "https://gitlab.com/some-group/some-project.git")
++
++            self.assertEqual(detect_remote_host(root), "gitlab")
++
++    def test_returns_none_for_an_unrecognized_remote(self):
++        with tempfile.TemporaryDirectory() as root:
++            root = Path(root)
++            _init_repo_with_remote(root, "https://bitbucket.org/some-team/some-repo.git")
++
++            self.assertIsNone(detect_remote_host(root))
++
++    def test_detects_github_even_when_a_gitconfig_insteadof_rule_rewrites_the_url(self):
++        """Confirmed live in this very environment: a global
++        url.<base>.insteadOf rule rewrites https://github.com/X/ to a
++        git@github-X: SSH alias. `git remote get-url` returns the
++        rewritten form (no "github.com" left in it); `git config --get`
++        returns the raw stored URL, which this must use instead."""
++        with tempfile.TemporaryDirectory() as root:
++            root = Path(root)
++            _init_repo_with_remote(root, "https://github.com/CtrlCarlitos/skills.git")
++            # Simulate an insteadOf rewrite active for this one clone, same
++            # shape as the real multi-account alias confirmed above.
++            _run(["git", "config", "url.git@github-alias:.insteadOf", "https://github.com/"], root)
++            rewritten = _run(["git", "remote", "get-url", "origin"], root).stdout.strip()
++            self.assertNotIn("github.com", rewritten)  # sanity: the rewrite is actually in effect
++
++            self.assertEqual(detect_remote_host(root), "github")
++
++    def test_returns_none_when_there_is_no_remote_at_all(self):
++        with tempfile.TemporaryDirectory() as root:
++            root = Path(root)
++            _run(["git", "init", "-q", "-b", "main"], root)
++
++            self.assertIsNone(detect_remote_host(root))
++
++
++class ExtractIssueRefsTests(unittest.TestCase):
++    def test_extracts_a_plain_hash_reference(self):
++        refs = extract_issue_refs(["fix(login): handle expired tokens (#123)"])
++
++        self.assertEqual(refs, [{"kind": "issue", "number": 123}])
++
++    def test_extracts_a_closes_keyword_reference(self):
++        refs = extract_issue_refs(["feat: add retry logic\n\nCloses #45"])
++
++        self.assertEqual(refs, [{"kind": "issue", "number": 45}])
++
++    def test_extracts_a_gitlab_merge_request_reference(self):
++        refs = extract_issue_refs(["fix: typo in README (!67)"])
++
++        self.assertEqual(refs, [{"kind": "merge_request", "number": 67}])
++
++    def test_extracts_multiple_distinct_references_across_several_messages(self):
++        refs = extract_issue_refs(["fix: a (#1)", "feat: b\n\nCloses #2", "chore: c (!3)"])
++
++        self.assertEqual(
++            refs,
++            [
++                {"kind": "issue", "number": 1},
++                {"kind": "issue", "number": 2},
++                {"kind": "merge_request", "number": 3},
++            ],
++        )
++
++    def test_deduplicates_the_same_reference_seen_more_than_once(self):
++        refs = extract_issue_refs(["fix: a (#1)", "fix: a, again (#1)"])
++
++        self.assertEqual(refs, [{"kind": "issue", "number": 1}])
++
++    def test_returns_an_empty_list_when_nothing_matches(self):
++        refs = extract_issue_refs(["chore: bump dependency versions"])
++
++        self.assertEqual(refs, [])
++
++
++class FetchCommandsForTests(unittest.TestCase):
++    def test_github_issue_ref_tries_issue_then_pr(self):
++        commands = fetch_commands_for("github", {"kind": "issue", "number": 123})
++
++        self.assertEqual(commands, [["gh", "issue", "view", "123"], ["gh", "pr", "view", "123"]])
++
++    def test_gitlab_issue_ref_uses_glab_issue(self):
++        commands = fetch_commands_for("gitlab", {"kind": "issue", "number": 45})
++
++        self.assertEqual(commands, [["glab", "issue", "view", "45"]])
++
++    def test_gitlab_merge_request_ref_uses_glab_mr(self):
++        commands = fetch_commands_for("gitlab", {"kind": "merge_request", "number": 67})
++
++        self.assertEqual(commands, [["glab", "mr", "view", "67"]])
++
++    def test_an_unrecognized_host_yields_no_commands(self):
++        commands = fetch_commands_for(None, {"kind": "issue", "number": 1})
++
++        self.assertEqual(commands, [])
++
++    def test_a_merge_request_ref_on_github_yields_no_commands(self):
++        """GitHub has no distinct "merge request" numbering -- a !N ref
++        found in a GitHub repo's commit history isn't a GitHub convention
++        and shouldn't be guessed at."""
++        commands = fetch_commands_for("github", {"kind": "merge_request", "number": 67})
++
++        self.assertEqual(commands, [])
++
++
++if __name__ == "__main__":
++    unittest.main()
