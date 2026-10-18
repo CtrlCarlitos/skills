@@ -25,6 +25,8 @@ jobs:
         run: pip install -r skills/skill-creator/requirements.txt
       - name: install repo-policy dependencies
         run: pip install -r skills/repo-policy/requirements.txt
+      - name: install deliver dependencies
+        run: pip install -r skills/deliver/requirements.txt
       - name: skill-creator regression tests
         working-directory: skills/skill-creator
         run: python3 -m unittest discover -s tests -v
@@ -42,6 +44,9 @@ jobs:
         run: python3 -m unittest discover -s tests -v
       - name: mp-code-review regression tests
         working-directory: skills/mp-code-review
+        run: python3 -m unittest discover -s tests -v
+      - name: deliver regression tests
+        working-directory: skills/deliver
         run: python3 -m unittest discover -s tests -v
       - name: sync-vendor.sh diff-portability test
         run: bash scripts/tests/test_sync_vendor.sh
@@ -78,6 +83,8 @@ jobs:
         run: pip install -r skills/skill-creator/requirements.txt
       - name: install repo-policy dependencies
         run: pip install -r skills/repo-policy/requirements.txt
+      - name: install deliver dependencies
+        run: pip install -r skills/deliver/requirements.txt
       - name: skill-creator regression tests
         working-directory: skills/skill-creator
         run: python -m unittest discover -s tests -v
@@ -95,6 +102,9 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: mp-code-review regression tests
         working-directory: skills/mp-code-review
+        run: python -m unittest discover -s tests -v
+      - name: deliver regression tests
+        working-directory: skills/deliver
         run: python -m unittest discover -s tests -v
       - name: sync-vendor.sh diff-portability test
         shell: bash
@@ -126,6 +136,8 @@ jobs:
         run: pip install -r skills/skill-creator/requirements.txt
       - name: install repo-policy dependencies
         run: pip install -r skills/repo-policy/requirements.txt
+      - name: install deliver dependencies
+        run: pip install -r skills/deliver/requirements.txt
       - name: skill-creator regression tests
         working-directory: skills/skill-creator
         run: python3 -m unittest discover -s tests -v
@@ -143,6 +155,9 @@ jobs:
         run: python3 -m unittest discover -s tests -v
       - name: mp-code-review regression tests
         working-directory: skills/mp-code-review
+        run: python3 -m unittest discover -s tests -v
+      - name: deliver regression tests
+        working-directory: skills/deliver
         run: python3 -m unittest discover -s tests -v
       - name: sync-vendor.sh diff-portability test
         run: bash scripts/tests/test_sync_vendor.sh
