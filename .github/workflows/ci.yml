@@ -51,6 +51,9 @@ jobs:
       - name: git-editor-config regression tests
         working-directory: skills/git-editor-config
         run: python3 -m unittest discover -s tests -v
+      - name: study-coach regression tests
+        working-directory: skills/study-coach
+        run: python3 -m unittest discover -s tests -v
       - name: sync-vendor.sh diff-portability test
         run: bash scripts/tests/test_sync_vendor.sh
 
@@ -112,6 +115,9 @@ jobs:
       - name: git-editor-config regression tests
         working-directory: skills/git-editor-config
         run: python -m unittest discover -s tests -v
+      - name: study-coach regression tests
+        working-directory: skills/study-coach
+        run: python -m unittest discover -s tests -v
       - name: sync-vendor.sh diff-portability test
         shell: bash
         run: bash scripts/tests/test_sync_vendor.sh
@@ -167,6 +173,9 @@ jobs:
         run: python3 -m unittest discover -s tests -v
       - name: git-editor-config regression tests
         working-directory: skills/git-editor-config
+        run: python3 -m unittest discover -s tests -v
+      - name: study-coach regression tests
+        working-directory: skills/study-coach
         run: python3 -m unittest discover -s tests -v
       - name: sync-vendor.sh diff-portability test
         run: bash scripts/tests/test_sync_vendor.sh
