@@ -1,2 +1,5 @@
 # eval workspaces hold run transcripts and outputs
 *-workspace/
+
+# local Serena MCP project state (per-machine LSP indexing config)
+.serena/
