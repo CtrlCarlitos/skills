@@ -64,6 +64,26 @@ achieved. Shipping now regardless: the gap is external to this fork (an
 upstream OpenCode feature request, an unverified Antigravity detail), and
 holding the whole port on it would not change either outcome.
 
+### Partial, pragmatic mitigation
+
+The skill body now opens with an explicit instruction: only act when the
+user explicitly asked for this, regardless of whether the current harness
+enforces manual-only invocation at the tool level. Unlike the frontmatter
+flags above, this is plain instruction text every harness reads once the
+skill is loaded, so it applies even where the flag is ignored.
+
+This is a mitigation, not a fix, and the distinction matters:
+
+- It reduces the chance the model actually *acts* (produces a diagram,
+  pseudocode, or HTML) when not explicitly asked, on any harness.
+- It does **not** stop the skill's name/description from being loaded
+  into context on a harness that ignores the flag — the original
+  complaint in the OpenCode issue (unnecessary context consumption) is
+  unaffected by this change.
+- It is a soft, model-followed instruction, not a hard, harness-enforced
+  block — a model can still disregard it, which a real harness-level
+  guard cannot.
+
 ## Eval comparison: original vs. adapted
 
 Per this issue's "Improvement and evaluation" section, this reuses
