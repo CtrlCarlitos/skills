@@ -6,6 +6,7 @@ against real `git ls-files -s` / file-system state.
 Run from skills/git-editor-config/: python3 -m unittest discover -s tests
 """
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -151,6 +152,7 @@ class ApplyExecBitFixesTests(unittest.TestCase):
             self.assertEqual((repo / "README.md").read_bytes(), readme_before)
             self.assertEqual((repo / "other.sh").stat().st_mode, other_mode_before)
 
+    @unittest.skipIf(sys.platform == "win32", "NTFS has no POSIX executable bit to sync")
     def test_also_updates_the_working_tree_file_mode_not_just_the_index(self):
         # A fix that only touches the git index is invisible to `ls -l` and
         # gets silently reverted by the next `git add -A`/`commit -a` on a

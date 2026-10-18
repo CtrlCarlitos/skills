@@ -14,6 +14,7 @@ gitignore(5)'s own C-style quoting -- an unquoted "my fix.patch" would
 assign the attribute to a file literally named "my".
 """
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -45,7 +46,11 @@ def apply_exec_bit_fixes(repo_root: Path, approved: list[dict], run=subprocess.r
 
         # update-index only changes the index; the working-tree file's own
         # mode must agree too, or the next `git add -A`/`commit -a` on a
-        # filemode=true checkout silently reverts this.
+        # filemode=true checkout silently reverts this. NTFS has no POSIX
+        # executable bit at all (Windows' core.filemode is false by
+        # default for exactly this reason), so there is nothing to sync.
+        if sys.platform == "win32":
+            continue
         target = Path(repo_root) / row["path"]
         current_mode = target.stat().st_mode
         if executable:
