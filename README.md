@@ -3,7 +3,7 @@
 Agent skills by CtrlCarlitos, installable with the [`skills`](https://skills.sh) CLI:
 
 ```sh
-npx skills add CtrlCarlitos/skills -s code-search skill-creator show-me repo-policy release-notes -a claude-code opencode codex antigravity -g -y --copy
+npx skills add CtrlCarlitos/skills -s code-search skill-creator show-me repo-policy release-notes update-docs -a claude-code opencode codex antigravity -g -y --copy
 ```
 
 | Skill | What it does |
@@ -13,5 +13,6 @@ npx skills add CtrlCarlitos/skills -s code-search skill-creator show-me repo-pol
 | [`show-me`](skills/show-me/SKILL.md) | Drop-in fork of HumanLayer's show-me with a cross-platform artifact opener (native Windows, WSL, Linux, macOS, devcontainers) replacing the macOS-only `open` command. User-invoked only (`disable-model-invocation`) — not auto-triggered. That invocation-suppression isn't honored by OpenCode (confirmed upstream bug) and is unverified on Antigravity; see `vendor/show-me/DISPOSITION.md` and #12. Pinned upstream commit and patch queue in `vendor/show-me/`; `scripts/sync-vendor.sh show-me` rebuilds or checks it. |
 | [`repo-policy`](skills/repo-policy/SKILL.md) | Audits a GitHub repo's settings, branch protection (via GitHub Rulesets), release-tag protection, and governance files against a configurable policy (repo override → user policy → built-in default, documented exceptions, "required where applicable" settings). Reports a Markdown gap matrix; applies only itemized, explicitly-approved changes — never a blanket apply. GitHub-only by design. |
 | [`release-notes`](skills/release-notes/SKILL.md) | Drafts release notes for an explicit commit range, grounded in real commits and diffs: resolves the range (tags, shallow clones, missing tags all fail loudly), collapses reverted pairs and squash merges, reads the diff of `refactor`/`chore`/`test` commits instead of trusting the label, and matches an existing changelog's format when there is one. Repo-type guides (generic, odoo, phoenix, go, flutter, course, docs) in `references/` cover what counts as breaking/security/upgrade per ecosystem. Draft-only, on demand — never tags, pushes, or publishes. |
+| [`update-docs`](skills/update-docs/SKILL.md) | Audits a repo's docs against its code — scoped to a diff/range by default, whole-repo on request — citing the file/line/test that proves each finding, never trusting a doc's own claim. Runs `markdownlint-cli2`/`lychee`/`vale` if installed (vale falls back to a synced Google style when the repo has none), skips any that aren't, and never touches `CHANGELOG.md`, an accepted ADR, or a generated doc's output. Fixes or generates new pages (placed by Diátaxis type) only when explicitly asked. |
 
 Each skill lives in `skills/<name>/SKILL.md`. Evals sit next to the skill in `evals/`.
