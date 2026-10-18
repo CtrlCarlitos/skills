@@ -3,3 +3,6 @@
 
 # local Serena MCP project state (per-machine LSP indexing config)
 .serena/
+
+# Python bytecode cache
+__pycache__/

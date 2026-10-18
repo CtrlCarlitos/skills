@@ -17,8 +17,26 @@ from pathlib import Path
 
 from scripts.generate_report import generate_html
 from scripts.improve_description import improve_description
-from scripts.run_eval import find_project_root, run_eval
+from scripts.run_eval import find_project_root, run_eval, summarize
 from scripts.utils import parse_skill_md
+
+
+def split_results(all_results: dict, train_queries_set: set[str]) -> tuple[dict, dict | None]:
+    """Split a run_eval() result into train/test subsets with their own summaries.
+
+    Reuses summarize() rather than re-deriving failed = total - passed locally,
+    so an errored query (no successful run) is never miscounted as a failed one.
+    """
+    train_result_list = [r for r in all_results["results"] if r["query"] in train_queries_set]
+    test_result_list = [r for r in all_results["results"] if r["query"] not in train_queries_set]
+
+    train_results = {"results": train_result_list, "summary": summarize(train_result_list)}
+    test_results = (
+        {"results": test_result_list, "summary": summarize(test_result_list)}
+        if test_result_list
+        else None
+    )
+    return train_results, test_results
 
 
 def split_eval_set(eval_set: list[dict], holdout: float, seed: int = 42) -> tuple[list[dict], list[dict]]:
@@ -102,22 +120,9 @@ def run_loop(
 
         # Split results back into train/test by matching queries
         train_queries_set = {q["query"] for q in train_set}
-        train_result_list = [r for r in all_results["results"] if r["query"] in train_queries_set]
-        test_result_list = [r for r in all_results["results"] if r["query"] not in train_queries_set]
-
-        train_passed = sum(1 for r in train_result_list if r["pass"])
-        train_total = len(train_result_list)
-        train_summary = {"passed": train_passed, "failed": train_total - train_passed, "total": train_total}
-        train_results = {"results": train_result_list, "summary": train_summary}
-
-        if test_set:
-            test_passed = sum(1 for r in test_result_list if r["pass"])
-            test_total = len(test_result_list)
-            test_summary = {"passed": test_passed, "failed": test_total - test_passed, "total": test_total}
-            test_results = {"results": test_result_list, "summary": test_summary}
-        else:
-            test_results = None
-            test_summary = None
+        train_results, test_results = split_results(all_results, train_queries_set)
+        train_summary = train_results["summary"]
+        test_summary = test_results["summary"] if test_results else None
 
         history.append({
             "iteration": iteration,
@@ -175,7 +180,14 @@ def run_loop(
             if test_summary:
                 print_eval_stats("Test ", test_results["results"], 0)
 
-        if train_summary["failed"] == 0:
+        if train_summary["errored"]:
+            if verbose:
+                print(
+                    f"\n{train_summary['errored']} train query(ies) had no successful run "
+                    f"(harness error) on iteration {iteration}; not declaring all_passed.",
+                    file=sys.stderr,
+                )
+        elif train_summary["failed"] == 0:
             exit_reason = f"all_passed (iteration {iteration})"
             if verbose:
                 print(f"\nAll train queries passed on iteration {iteration}!", file=sys.stderr)

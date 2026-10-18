@@ -1,0 +1,924 @@
+run_eval/run_loop: fix contaminated results and masked harness errors; add
+regression tests for the fork's actual responsibilities
+
+Two eval-validity bugs found while auditing this fork for
+CtrlCarlitos/skills#1:
+
+- A real skill already installed under the name being evaluated could
+  trigger instead of the injected candidate-description decoy, and the
+  harness counted that as a pass for the candidate under test. Detected
+  eagerly now (find_conflicting_installed_skill) and surfaced as a loud
+  warning plus an eval_validity_warning field, not silently measured.
+- Any worker exception (subprocess crash, missing `claude` CLI, timeout)
+  was coerced to a plain non-trigger (False), so a broken harness and a
+  genuinely non-triggering description were indistinguishable in the
+  reported score. run_eval.py's aggregate_results/summarize and
+  run_loop.py's split_results now report an "errored" count instead, and
+  run_loop.py's all_passed early-exit no longer fires on an errored run.
+
+Also extracts the Windows pipe-reader pump into pump_stdout_to_queue()
+so it's testable without sys.platform or a real subprocess, adds a
+tests/ directory covering it, the UTF-8-everywhere invariant from patch
+0002, --project-root resolution from patch 0003, and validate_skill/
+package_skill with spaces and non-ASCII characters in the skill's path,
+and updates the SKILL.md fork note to mention these fixes.
+
+Three more bugs CI's new windows-latest job (same PR) caught on its
+first real run, all fixed here:
+
+- test_find_project_root's tests errored tearing down on Windows:
+  tempfile.TemporaryDirectory()'s cleanup ran while cwd was still
+  inside it (POSIX allows removing a directory you're cd'd into,
+  Windows doesn't), because the chdir-back was deferred to addCleanup,
+  which fires after the `with` block's cleanup already ran. Switched to
+  tempfile.mkdtemp() with its own addCleanup(shutil.rmtree) registered
+  before the chdir-back's, so cleanups run in the right order (LIFO).
+- quick_validate.py imports yaml, but nothing in this repo or upstream
+  ever declared PyYAML as a dependency; it only worked by accident of
+  Ubuntu's base image happening to have it preinstalled. Added
+  requirements.txt (the only third-party import anywhere in this tree,
+  confirmed by an AST scan) and a `pip install -r` CI step.
+- package_skill.py prints status emoji via plain print(), which raises
+  UnicodeEncodeError on Windows' default console encoding (cp1252) --
+  the same bug class as patch 0002's file I/O fix, just for stdout.
+  Reconfigures stdout to UTF-8 at entry (_ensure_utf8_stdout), with a
+  regression test that reproduces the exact crash on any OS by
+  redirecting stdout to a cp1252-encoded stream.
+
+diff --git a/skills/skill-creator/SKILL.md b/skills/skill-creator/SKILL.md
+index 675dce4..b9bfcd6 100644
+--- a/skills/skill-creator/SKILL.md
++++ b/skills/skill-creator/SKILL.md
+@@ -3,8 +3,10 @@ name: skill-creator
+ description: Create new skills, modify and improve existing skills, and measure skill performance. Use when users want to create a skill from scratch, edit, or optimize an existing skill, run evals to test a skill, benchmark skill performance with variance analysis, or optimize a skill's description for better triggering accuracy.
+ ---
+ > Fork of anthropics/skills `skills/skill-creator` with Windows fixes (pipe reader, UTF-8 file I/O,
+-> `--project-root`, real-skill trigger detection). Upstream commit and patches: `vendor/skill-creator/`
+-> in CtrlCarlitos/skills. Drop-in: same name, same description. Upstream issue anthropics/skills#1827.
++> `--project-root`, real-skill trigger detection) and eval-validity fixes (contaminated results from
++> an installed same-named skill, harness errors masked as a 0% score). Upstream commit, patches, and
++> audit findings: `vendor/skill-creator/` in CtrlCarlitos/skills. Drop-in: same name, same description.
++> Upstream issue anthropics/skills#1827.
+ 
+ 
+ # Skill Creator
+diff --git a/skills/skill-creator/requirements.txt b/skills/skill-creator/requirements.txt
+new file mode 100644
+index 0000000..c3726e8
+--- /dev/null
++++ b/skills/skill-creator/requirements.txt
+@@ -0,0 +1 @@
++pyyaml
+diff --git a/skills/skill-creator/scripts/package_skill.py b/skills/skill-creator/scripts/package_skill.py
+index f48eac4..963a757 100755
+--- a/skills/skill-creator/scripts/package_skill.py
++++ b/skills/skill-creator/scripts/package_skill.py
+@@ -24,6 +24,20 @@ EXCLUDE_FILES = {".DS_Store"}
+ ROOT_EXCLUDE_DIRS = {"evals"}
+ 
+ 
++def _ensure_utf8_stdout() -> None:
++    """Make the status emoji below safe to print regardless of the
++    platform's default console encoding. Windows' default (cp1252) can't
++    represent them, and plain print() raises UnicodeEncodeError on the
++    first one -- the same class of bug as the UTF-8 file I/O patch, just
++    for stdout instead of files.
++    """
++    if hasattr(sys.stdout, "reconfigure"):
++        try:
++            sys.stdout.reconfigure(encoding="utf-8")
++        except (AttributeError, ValueError, OSError):
++            pass
++
++
+ def should_exclude(rel_path: Path) -> bool:
+     """Check if a path should be excluded from packaging."""
+     parts = rel_path.parts
+@@ -50,6 +64,7 @@ def package_skill(skill_path, output_dir=None):
+     Returns:
+         Path to the created .skill file, or None if error
+     """
++    _ensure_utf8_stdout()
+     skill_path = Path(skill_path).resolve()
+ 
+     # Validate skill folder exists
+@@ -109,6 +124,7 @@ def package_skill(skill_path, output_dir=None):
+ 
+ 
+ def main():
++    _ensure_utf8_stdout()
+     if len(sys.argv) < 2:
+         print("Usage: python utils/package_skill.py <path/to/skill-folder> [output-directory]")
+         print("\nExample:")
+diff --git a/skills/skill-creator/scripts/run_eval.py b/skills/skill-creator/scripts/run_eval.py
+index 0cb2777..09af252 100755
+--- a/skills/skill-creator/scripts/run_eval.py
++++ b/skills/skill-creator/scripts/run_eval.py
+@@ -35,6 +35,41 @@ def find_project_root() -> Path:
+     return current
+ 
+ 
++def find_conflicting_installed_skill(project_root: Path, skill_name: str) -> Path | None:
++    """Return the SKILL.md of a real, already-installed skill with this name, if any.
++
++    The eval harness injects a temporary decoy command to test a candidate
++    description (see run_single_query). If a real skill with the same name
++    is also installed (project- or user-scoped), the model can trigger that
++    unrelated, already-shipped copy instead, and the harness can't tell the
++    two apart — silently measuring the wrong description. Checked eagerly so
++    that contamination is reported, not swallowed into a clean-looking score.
++    """
++    for candidate in (
++        project_root / ".claude" / "skills" / skill_name / "SKILL.md",
++        Path.home() / ".claude" / "skills" / skill_name / "SKILL.md",
++    ):
++        if candidate.is_file():
++            return candidate
++    return None
++
++
++def pump_stdout_to_queue(out, q: "_queue.Queue") -> None:
++    """Drain a subprocess stdout stream into a queue; None marks EOF.
++
++    Used on Windows, where select.select() only accepts sockets, so the
++    select()+os.read() loop used elsewhere can't poll a subprocess pipe.
++    Runs in a background thread; the caller polls `q` with a timeout the
++    same way select's timeout worked on other platforms.
++    """
++    while True:
++        chunk = out.read1(8192) if hasattr(out, "read1") else out.read(8192)
++        if not chunk:
++            q.put(None)
++            return
++        q.put(chunk)
++
++
+ def run_single_query(
+     query: str,
+     skill_name: str,
+@@ -98,14 +133,9 @@ def run_single_query(
+         _win_q = None
+         if sys.platform == "win32":
+             _win_q = _queue.Queue()
+-            def _pump(q=_win_q, out=process.stdout):
+-                while True:
+-                    c = out.read1(8192) if hasattr(out, "read1") else out.read(8192)
+-                    if not c:
+-                        q.put(None)
+-                        return
+-                    q.put(c)
+-            _threading.Thread(target=_pump, daemon=True).start()
++            _threading.Thread(
++                target=pump_stdout_to_queue, args=(process.stdout, _win_q), daemon=True
++            ).start()
+ 
+         triggered = False
+         start_time = time.time()
+@@ -206,6 +236,74 @@ def run_single_query(
+             command_file.unlink()
+ 
+ 
++def summarize(results: list[dict]) -> dict:
++    """Count passed/failed/errored over a list of per-query result dicts.
++
++    A result's `pass` is True, False, or None (errored: no successful run,
++    so it is neither a measured pass nor a measured fail).
++    """
++    return {
++        "total": len(results),
++        "passed": sum(1 for r in results if r["pass"] is True),
++        "failed": sum(1 for r in results if r["pass"] is False),
++        "errored": sum(1 for r in results if r["pass"] is None),
++    }
++
++
++def aggregate_results(
++    eval_set: list[dict],
++    query_outcomes: dict[str, list[bool | BaseException]],
++    trigger_threshold: float = 0.5,
++) -> dict:
++    """Turn raw per-run outcomes into per-query stats and a summary.
++
++    Each outcome is either a bool (a real trigger measurement) or an
++    exception (the run itself failed: subprocess crash, missing `claude`
++    CLI, timeout, etc.). Exceptions are never averaged in as non-triggers —
++    a query with no successful runs is reported as errored, not failed, so
++    a broken harness can't masquerade as a 0% skill score.
++    """
++    results = []
++    for item in eval_set:
++        query = item["query"]
++        should_trigger = item["should_trigger"]
++        outcomes = query_outcomes.get(query, [])
++        triggers = [o for o in outcomes if isinstance(o, bool)]
++        errors = [o for o in outcomes if not isinstance(o, bool)]
++
++        entry = {
++            "query": query,
++            "should_trigger": should_trigger,
++            "runs": len(outcomes),
++            "errors": len(errors),
++        }
++        if triggers:
++            trigger_rate = sum(triggers) / len(triggers)
++            did_pass = (
++                trigger_rate >= trigger_threshold
++                if should_trigger
++                else trigger_rate < trigger_threshold
++            )
++            entry.update({
++                "trigger_rate": trigger_rate,
++                "triggers": sum(triggers),
++                "pass": did_pass,
++            })
++        else:
++            entry.update({
++                "trigger_rate": None,
++                "triggers": 0,
++                "pass": None,
++                "error_messages": [str(e) for e in errors],
++            })
++        results.append(entry)
++
++    return {
++        "results": results,
++        "summary": summarize(results),
++    }
++
++
+ def run_eval(
+     eval_set: list[dict],
+     skill_name: str,
+@@ -218,7 +316,17 @@ def run_eval(
+     model: str | None = None,
+ ) -> dict:
+     """Run the full eval set and return results."""
+-    results = []
++    conflict = find_conflicting_installed_skill(project_root, skill_name)
++    if conflict:
++        print(
++            f"WARNING: a real skill named '{skill_name}' is already installed at "
++            f"{conflict}. The model may trigger that installed copy's actual "
++            "description instead of the candidate description under test, and "
++            "this harness cannot tell the two apart. Results below may measure "
++            "the wrong description — uninstall or rename the installed copy "
++            "before trusting this score.",
++            file=sys.stderr,
++        )
+ 
+     with ProcessPoolExecutor(max_workers=num_workers) as executor:
+         future_to_info = {}
+@@ -235,49 +343,38 @@ def run_eval(
+                 )
+                 future_to_info[future] = (item, run_idx)
+ 
+-        query_triggers: dict[str, list[bool]] = {}
+-        query_items: dict[str, dict] = {}
++        query_outcomes: dict[str, list[bool | BaseException]] = {}
+         for future in as_completed(future_to_info):
+             item, _ = future_to_info[future]
+             query = item["query"]
+-            query_items[query] = item
+-            if query not in query_triggers:
+-                query_triggers[query] = []
++            query_outcomes.setdefault(query, [])
+             try:
+-                query_triggers[query].append(future.result())
++                query_outcomes[query].append(future.result())
+             except Exception as e:
+-                print(f"Warning: query failed: {e}", file=sys.stderr)
+-                query_triggers[query].append(False)
++                print(f"Warning: query run failed (harness error, not a non-trigger): {e}", file=sys.stderr)
++                query_outcomes[query].append(e)
+ 
+-    for query, triggers in query_triggers.items():
+-        item = query_items[query]
+-        trigger_rate = sum(triggers) / len(triggers)
+-        should_trigger = item["should_trigger"]
+-        if should_trigger:
+-            did_pass = trigger_rate >= trigger_threshold
+-        else:
+-            did_pass = trigger_rate < trigger_threshold
+-        results.append({
+-            "query": query,
+-            "should_trigger": should_trigger,
+-            "trigger_rate": trigger_rate,
+-            "triggers": sum(triggers),
+-            "runs": len(triggers),
+-            "pass": did_pass,
+-        })
++    aggregated = aggregate_results(eval_set, query_outcomes, trigger_threshold)
+ 
+-    passed = sum(1 for r in results if r["pass"])
+-    total = len(results)
++    if aggregated["summary"]["errored"]:
++        print(
++            f"Warning: {aggregated['summary']['errored']} of "
++            f"{aggregated['summary']['total']} queries had no successful run "
++            "(harness errors) and are excluded from passed/failed counts.",
++            file=sys.stderr,
++        )
+ 
+     return {
+         "skill_name": skill_name,
+         "description": description,
+-        "results": results,
+-        "summary": {
+-            "total": total,
+-            "passed": passed,
+-            "failed": total - passed,
+-        },
++        "eval_validity_warning": (
++            f"A real skill named '{skill_name}' is already installed at {conflict}; "
++            "results may measure that installed copy instead of this candidate "
++            "description."
++            if conflict
++            else None
++        ),
++        **aggregated,
+     }
+ 
+ 
+diff --git a/skills/skill-creator/scripts/run_loop.py b/skills/skill-creator/scripts/run_loop.py
+index 8a2f8bf..32ae8b1 100755
+--- a/skills/skill-creator/scripts/run_loop.py
++++ b/skills/skill-creator/scripts/run_loop.py
+@@ -17,10 +17,28 @@ from pathlib import Path
+ 
+ from scripts.generate_report import generate_html
+ from scripts.improve_description import improve_description
+-from scripts.run_eval import find_project_root, run_eval
++from scripts.run_eval import find_project_root, run_eval, summarize
+ from scripts.utils import parse_skill_md
+ 
+ 
++def split_results(all_results: dict, train_queries_set: set[str]) -> tuple[dict, dict | None]:
++    """Split a run_eval() result into train/test subsets with their own summaries.
++
++    Reuses summarize() rather than re-deriving failed = total - passed locally,
++    so an errored query (no successful run) is never miscounted as a failed one.
++    """
++    train_result_list = [r for r in all_results["results"] if r["query"] in train_queries_set]
++    test_result_list = [r for r in all_results["results"] if r["query"] not in train_queries_set]
++
++    train_results = {"results": train_result_list, "summary": summarize(train_result_list)}
++    test_results = (
++        {"results": test_result_list, "summary": summarize(test_result_list)}
++        if test_result_list
++        else None
++    )
++    return train_results, test_results
++
++
+ def split_eval_set(eval_set: list[dict], holdout: float, seed: int = 42) -> tuple[list[dict], list[dict]]:
+     """Split eval set into train and test sets, stratified by should_trigger."""
+     random.seed(seed)
+@@ -102,22 +120,9 @@ def run_loop(
+ 
+         # Split results back into train/test by matching queries
+         train_queries_set = {q["query"] for q in train_set}
+-        train_result_list = [r for r in all_results["results"] if r["query"] in train_queries_set]
+-        test_result_list = [r for r in all_results["results"] if r["query"] not in train_queries_set]
+-
+-        train_passed = sum(1 for r in train_result_list if r["pass"])
+-        train_total = len(train_result_list)
+-        train_summary = {"passed": train_passed, "failed": train_total - train_passed, "total": train_total}
+-        train_results = {"results": train_result_list, "summary": train_summary}
+-
+-        if test_set:
+-            test_passed = sum(1 for r in test_result_list if r["pass"])
+-            test_total = len(test_result_list)
+-            test_summary = {"passed": test_passed, "failed": test_total - test_passed, "total": test_total}
+-            test_results = {"results": test_result_list, "summary": test_summary}
+-        else:
+-            test_results = None
+-            test_summary = None
++        train_results, test_results = split_results(all_results, train_queries_set)
++        train_summary = train_results["summary"]
++        test_summary = test_results["summary"] if test_results else None
+ 
+         history.append({
+             "iteration": iteration,
+@@ -175,7 +180,14 @@ def run_loop(
+             if test_summary:
+                 print_eval_stats("Test ", test_results["results"], 0)
+ 
+-        if train_summary["failed"] == 0:
++        if train_summary["errored"]:
++            if verbose:
++                print(
++                    f"\n{train_summary['errored']} train query(ies) had no successful run "
++                    f"(harness error) on iteration {iteration}; not declaring all_passed.",
++                    file=sys.stderr,
++                )
++        elif train_summary["failed"] == 0:
+             exit_reason = f"all_passed (iteration {iteration})"
+             if verbose:
+                 print(f"\nAll train queries passed on iteration {iteration}!", file=sys.stderr)
+diff --git a/skills/skill-creator/tests/__init__.py b/skills/skill-creator/tests/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/skills/skill-creator/tests/test_find_project_root.py b/skills/skill-creator/tests/test_find_project_root.py
+new file mode 100644
+index 0000000..5f82571
+--- /dev/null
++++ b/skills/skill-creator/tests/test_find_project_root.py
+@@ -0,0 +1,78 @@
++"""Regression tests for patch 0003 (--project-root / find_project_root()).
++
++find_project_root() mimics how Claude Code discovers its project root, by
++walking up from cwd looking for a `.claude/` directory. Run outside a repo
++(e.g. from a subagent whose cwd isn't the project), it lands wherever cwd
++happens to be instead of the real project — which is exactly what
++--project-root exists to override.
++
++Run from skills/skill-creator/: python3 -m unittest discover -s tests
++"""
++import os
++import shutil
++import tempfile
++import unittest
++from pathlib import Path
++
++from scripts.run_eval import find_project_root
++
++
++class FindProjectRootTests(unittest.TestCase):
++    def _make_dir(self) -> Path:
++        """A temp dir cleaned up via addCleanup, never a `with` block.
++
++        Windows can't remove a directory that is still the process's cwd
++        (POSIX allows this; Windows doesn't), so cwd must be restored
++        before cleanup runs. addCleanup runs LIFO, so as long as _chdir()
++        is called after _make_dir() for the same directory, the chdir-back
++        registered by _chdir() fires before this rmtree.
++        """
++        path = Path(tempfile.mkdtemp()).resolve()
++        self.addCleanup(shutil.rmtree, path, ignore_errors=True)
++        return path
++
++    def _chdir(self, path: Path) -> None:
++        original = Path.cwd()
++        os.chdir(path)
++        self.addCleanup(os.chdir, original)
++
++    def test_finds_nearest_ancestor_with_dot_claude(self):
++        root = self._make_dir()
++        (root / ".claude").mkdir()
++        nested = root / "a" / "b" / "c"
++        nested.mkdir(parents=True)
++        self._chdir(nested)
++
++        self.assertEqual(find_project_root(), root)
++
++    def test_falls_back_to_cwd_when_no_dot_claude_found(self):
++        root = self._make_dir()
++        nested = root / "a" / "b"
++        nested.mkdir(parents=True)
++        self._chdir(nested)
++
++        # No .claude/ anywhere above `nested` inside this isolated tree,
++        # so the walk reaches the real filesystem root. It must not
++        # raise, and must land on an ancestor of (or equal to) cwd.
++        found = find_project_root()
++        self.assertIn(found, [nested, *nested.parents])
++
++    def test_project_root_flag_overrides_discovery(self):
++        """main()'s `Path(args.project_root).resolve() if args.project_root else
++        find_project_root()` must prefer an explicit --project-root over
++        walking up from cwd, even when cwd has its own (different) .claude/.
++        """
++        cwd_root = self._make_dir()
++        explicit_root = self._make_dir()
++        (cwd_root / ".claude").mkdir()
++        self._chdir(cwd_root)
++
++        args_project_root = str(explicit_root)
++        resolved = Path(args_project_root).resolve() if args_project_root else find_project_root()
++
++        self.assertEqual(resolved, explicit_root)
++        self.assertNotEqual(resolved, cwd_root)
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/skills/skill-creator/tests/test_pump_stdout_to_queue.py b/skills/skill-creator/tests/test_pump_stdout_to_queue.py
+new file mode 100644
+index 0000000..88272a9
+--- /dev/null
++++ b/skills/skill-creator/tests/test_pump_stdout_to_queue.py
+@@ -0,0 +1,70 @@
++"""Regression tests for patch 0001 (Windows pipe reader).
++
++select.select() only accepts sockets on Windows, so run_single_query's
++non-Windows read loop (select + os.read on the pipe fd) can't be used there.
++On win32 a background thread pumps process.stdout into a queue instead,
++which the main loop polls with a timeout the same way select's timeout
++worked. This tests that pump directly, independent of sys.platform and
++without spawning a real `claude` subprocess.
++
++Run from skills/skill-creator/: python3 -m unittest discover -s tests
++"""
++import queue
++import unittest
++
++from scripts.run_eval import pump_stdout_to_queue
++
++
++class _FakeStdoutWithRead1:
++    """Mimics a buffered pipe object exposing read1(), like subprocess.PIPE."""
++
++    def __init__(self, chunks: list[bytes]):
++        self._chunks = list(chunks)
++
++    def read1(self, _size: int) -> bytes:
++        return self._chunks.pop(0) if self._chunks else b""
++
++
++class _FakeStdoutWithOnlyRead:
++    """Mimics a stream exposing only read(), to exercise the fallback branch."""
++
++    def __init__(self, chunks: list[bytes]):
++        self._chunks = list(chunks)
++
++    def read(self, _size: int) -> bytes:
++        return self._chunks.pop(0) if self._chunks else b""
++
++
++class PumpStdoutToQueueTests(unittest.TestCase):
++    def test_pumps_chunks_in_order_then_signals_eof_with_none(self):
++        q: queue.Queue = queue.Queue()
++        out = _FakeStdoutWithRead1([b"hello ", b"world"])
++
++        pump_stdout_to_queue(out, q)
++
++        self.assertEqual(q.get_nowait(), b"hello ")
++        self.assertEqual(q.get_nowait(), b"world")
++        self.assertIsNone(q.get_nowait())
++        self.assertTrue(q.empty())
++
++    def test_falls_back_to_plain_read_when_read1_is_unavailable(self):
++        q: queue.Queue = queue.Queue()
++        out = _FakeStdoutWithOnlyRead([b"chunk"])
++
++        pump_stdout_to_queue(out, q)
++
++        self.assertEqual(q.get_nowait(), b"chunk")
++        self.assertIsNone(q.get_nowait())
++
++    def test_immediate_eof_still_signals_none(self):
++        q: queue.Queue = queue.Queue()
++        out = _FakeStdoutWithRead1([])
++
++        pump_stdout_to_queue(out, q)
++
++        self.assertIsNone(q.get_nowait())
++        self.assertTrue(q.empty())
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/skills/skill-creator/tests/test_run_eval.py b/skills/skill-creator/tests/test_run_eval.py
+new file mode 100644
+index 0000000..a3ae930
+--- /dev/null
++++ b/skills/skill-creator/tests/test_run_eval.py
+@@ -0,0 +1,104 @@
++"""Regression tests for scripts/run_eval.py's result aggregation.
++
++Run from skills/skill-creator/: python3 -m unittest discover -s tests
++"""
++import tempfile
++import unittest
++from pathlib import Path
++from unittest import mock
++
++from scripts.run_eval import aggregate_results, find_conflicting_installed_skill, summarize
++
++
++class SummarizeTests(unittest.TestCase):
++    def test_errored_query_counts_as_errored_not_failed(self):
++        results = [
++            {"query": "a", "pass": True},
++            {"query": "b", "pass": None},  # errored: no successful runs
++        ]
++
++        summary = summarize(results)
++
++        self.assertEqual(summary, {"total": 2, "passed": 1, "failed": 0, "errored": 1})
++
++
++class AggregateResultsTests(unittest.TestCase):
++    def test_all_successful_runs_computes_trigger_rate_and_pass(self):
++        eval_set = [{"query": "find the thing", "should_trigger": True}]
++        query_outcomes = {"find the thing": [True, True, False]}
++
++        out = aggregate_results(eval_set, query_outcomes, trigger_threshold=0.5)
++
++        result = out["results"][0]
++        self.assertAlmostEqual(result["trigger_rate"], 2 / 3)
++        self.assertTrue(result["pass"])
++        self.assertEqual(out["summary"], {"total": 1, "passed": 1, "failed": 0, "errored": 0})
++
++    def test_harness_error_does_not_count_as_non_trigger(self):
++        eval_set = [{"query": "find the thing", "should_trigger": True}]
++        query_outcomes = {
++            "find the thing": [RuntimeError("claude CLI not found")] * 3,
++        }
++
++        out = aggregate_results(eval_set, query_outcomes, trigger_threshold=0.5)
++
++        result = out["results"][0]
++        self.assertIsNone(result["pass"])
++        self.assertEqual(result["errors"], 3)
++        self.assertEqual(out["summary"], {"total": 1, "passed": 0, "failed": 0, "errored": 1})
++
++    def test_partial_errors_compute_rate_from_successful_runs_only(self):
++        eval_set = [{"query": "find the thing", "should_trigger": True}]
++        query_outcomes = {
++            "find the thing": [True, RuntimeError("timeout"), True],
++        }
++
++        out = aggregate_results(eval_set, query_outcomes, trigger_threshold=0.5)
++
++        result = out["results"][0]
++        self.assertEqual(result["trigger_rate"], 1.0)
++        self.assertTrue(result["pass"])
++        self.assertEqual(result["errors"], 1)
++        self.assertEqual(out["summary"]["errored"], 0)
++
++
++class FindConflictingInstalledSkillTests(unittest.TestCase):
++    def test_no_conflict_when_nothing_installed(self):
++        with tempfile.TemporaryDirectory() as project_root, tempfile.TemporaryDirectory() as fake_home:
++            with mock.patch("scripts.run_eval.Path.home", return_value=Path(fake_home)):
++                self.assertIsNone(find_conflicting_installed_skill(Path(project_root), "my-skill"))
++
++    def test_detects_project_scoped_install(self):
++        with tempfile.TemporaryDirectory() as project_root, tempfile.TemporaryDirectory() as fake_home:
++            skill_dir = Path(project_root) / ".claude" / "skills" / "my-skill"
++            skill_dir.mkdir(parents=True)
++            (skill_dir / "SKILL.md").write_text("---\nname: my-skill\n---\n", encoding="utf-8")
++
++            with mock.patch("scripts.run_eval.Path.home", return_value=Path(fake_home)):
++                found = find_conflicting_installed_skill(Path(project_root), "my-skill")
++
++            self.assertEqual(found, skill_dir / "SKILL.md")
++
++    def test_detects_user_scoped_install(self):
++        with tempfile.TemporaryDirectory() as project_root, tempfile.TemporaryDirectory() as fake_home:
++            skill_dir = Path(fake_home) / ".claude" / "skills" / "my-skill"
++            skill_dir.mkdir(parents=True)
++            (skill_dir / "SKILL.md").write_text("---\nname: my-skill\n---\n", encoding="utf-8")
++
++            with mock.patch("scripts.run_eval.Path.home", return_value=Path(fake_home)):
++                found = find_conflicting_installed_skill(Path(project_root), "my-skill")
++
++            self.assertEqual(found, skill_dir / "SKILL.md")
++
++    def test_unrelated_skill_name_is_not_a_conflict(self):
++        with tempfile.TemporaryDirectory() as project_root, tempfile.TemporaryDirectory() as fake_home:
++            skill_dir = Path(project_root) / ".claude" / "skills" / "other-skill"
++            skill_dir.mkdir(parents=True)
++            (skill_dir / "SKILL.md").write_text("---\nname: other-skill\n---\n", encoding="utf-8")
++
++            with mock.patch("scripts.run_eval.Path.home", return_value=Path(fake_home)):
++                self.assertIsNone(find_conflicting_installed_skill(Path(project_root), "my-skill"))
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/skills/skill-creator/tests/test_run_loop.py b/skills/skill-creator/tests/test_run_loop.py
+new file mode 100644
+index 0000000..b7b6ec3
+--- /dev/null
++++ b/skills/skill-creator/tests/test_run_loop.py
+@@ -0,0 +1,45 @@
++"""Regression tests for scripts/run_loop.py's train/test result splitting.
++
++Run from skills/skill-creator/: python3 -m unittest discover -s tests
++"""
++import unittest
++
++from scripts.run_loop import split_results
++
++
++class SplitResultsTests(unittest.TestCase):
++    def test_splits_by_train_query_membership(self):
++        all_results = {
++            "results": [
++                {"query": "train-a", "pass": True},
++                {"query": "test-b", "pass": False},
++            ]
++        }
++
++        train, test = split_results(all_results, train_queries_set={"train-a"})
++
++        self.assertEqual([r["query"] for r in train["results"]], ["train-a"])
++        self.assertEqual([r["query"] for r in test["results"]], ["test-b"])
++
++    def test_empty_test_set_yields_none(self):
++        all_results = {"results": [{"query": "train-a", "pass": True}]}
++
++        train, test = split_results(all_results, train_queries_set={"train-a"})
++
++        self.assertIsNone(test)
++
++    def test_errored_query_does_not_count_as_failed(self):
++        all_results = {
++            "results": [
++                {"query": "train-a", "pass": True},
++                {"query": "train-b", "pass": None},  # errored: no successful run
++            ]
++        }
++
++        train, _ = split_results(all_results, train_queries_set={"train-a", "train-b"})
++
++        self.assertEqual(train["summary"], {"total": 2, "passed": 1, "failed": 0, "errored": 1})
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/skills/skill-creator/tests/test_spaces_and_unicode_paths.py b/skills/skill-creator/tests/test_spaces_and_unicode_paths.py
+new file mode 100644
+index 0000000..663224f
+--- /dev/null
++++ b/skills/skill-creator/tests/test_spaces_and_unicode_paths.py
+@@ -0,0 +1,88 @@
++"""Regression tests: validation and packaging must work when the skill's
++own path (not its `name:` field, which must stay kebab-case) contains
++spaces and non-ASCII characters — e.g. a user's home directory like
++"/Users/José García/My Projects/skill-creator".
++
++Run from skills/skill-creator/: python3 -m unittest discover -s tests
++"""
++import io
++import sys
++import tempfile
++import unittest
++import zipfile
++from pathlib import Path
++
++from scripts.package_skill import package_skill
++from scripts.quick_validate import validate_skill
++
++SKILL_MD = """---
++name: my-test-skill
++description: A skill used only to test packaging with odd paths.
++---
++
++Body content.
++"""
++
++
++def _write_skill(root: Path) -> Path:
++    skill_dir = root / "My Projects — café" / "my-test-skill"
++    skill_dir.mkdir(parents=True)
++    (skill_dir / "SKILL.md").write_text(SKILL_MD, encoding="utf-8")
++    (skill_dir / "references").mkdir()
++    (skill_dir / "references" / "notes résumé.md").write_text("notes", encoding="utf-8")
++    return skill_dir
++
++
++class SpacesAndUnicodePathTests(unittest.TestCase):
++    def test_validate_skill_succeeds_with_spaces_and_unicode_in_path(self):
++        with tempfile.TemporaryDirectory() as root:
++            skill_dir = _write_skill(Path(root))
++
++            valid, message = validate_skill(skill_dir)
++
++            self.assertTrue(valid, message)
++
++    def test_package_skill_succeeds_and_preserves_unicode_filenames(self):
++        with tempfile.TemporaryDirectory() as root:
++            skill_dir = _write_skill(Path(root))
++            output_dir = Path(root) / "dist output"
++
++            result = package_skill(str(skill_dir), str(output_dir))
++
++            self.assertIsNotNone(result)
++            self.assertTrue(result.is_file())
++            with zipfile.ZipFile(result) as zf:
++                names = zf.namelist()
++            self.assertTrue(
++                any("notes résumé.md" in n for n in names),
++                f"expected a unicode-named entry in {names}",
++            )
++            # Zip entries must use forward slashes regardless of host OS.
++            self.assertTrue(all("\\" not in n for n in names), names)
++
++    def test_package_skill_does_not_crash_on_a_non_utf8_stdout(self):
++        """Reproduces the Windows console crash deterministically on any OS.
++
++        package_skill() prints status emoji via plain print(). print()
++        raises UnicodeEncodeError if sys.stdout's encoding can't represent
++        the character -- which is Windows' default console encoding
++        (cp1252), not a hypothetical. Redirecting stdout to a cp1252-backed
++        stream reproduces the exact failure without needing Windows.
++        """
++        with tempfile.TemporaryDirectory() as root:
++            skill_dir = _write_skill(Path(root))
++            output_dir = Path(root) / "dist cp1252"
++
++            fake_stdout = io.TextIOWrapper(io.BytesIO(), encoding="cp1252", errors="strict")
++            original_stdout = sys.stdout
++            sys.stdout = fake_stdout
++            try:
++                result = package_skill(str(skill_dir), str(output_dir))
++            finally:
++                sys.stdout = original_stdout
++
++            self.assertIsNotNone(result)
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/skills/skill-creator/tests/test_utf8_file_io.py b/skills/skill-creator/tests/test_utf8_file_io.py
+new file mode 100644
+index 0000000..bc4dc8b
+--- /dev/null
++++ b/skills/skill-creator/tests/test_utf8_file_io.py
+@@ -0,0 +1,83 @@
++"""Regression test for patch 0002 (explicit UTF-8 file I/O everywhere).
++
++On a non-UTF-8 locale (e.g. cp1252), `open()`/`read_text()`/`write_text()`
++without an explicit encoding fall back to the platform's preferred encoding
++and crash on non-ASCII content (the original bug: a report containing U+2717
++raised UnicodeEncodeError). Rather than depend on actually running under a
++different locale, this statically scans the vendored source for text I/O
++calls missing `encoding="utf-8"`, so a future edit can't silently reintroduce
++the bug this patch fixed.
++
++Run from skills/skill-creator/: python3 -m unittest discover -s tests
++"""
++import re
++import unittest
++from pathlib import Path
++
++SKILL_CREATOR_ROOT = Path(__file__).resolve().parent.parent
++
++# Text-mode open()/read_text()/write_text() calls that must carry an explicit
++# encoding. Binary mode ("rb"/"wb") and calls that already pass encoding=
++# are not flagged.
++TEXT_IO_CALL = re.compile(r"\.read_text\(|\.write_text\(|(?<![.\w])open\(")
++
++
++def _calls_missing_encoding(source: str) -> list[str]:
++    missing = []
++    for lineno, line in enumerate(source.splitlines(), start=1):
++        if "encoding=" in line:
++            continue
++        if "rb" in line or "wb" in line or "ab" in line:
++            # Binary mode: encoding is meaningless, not a bug.
++            if re.search(r'open\([^)]*["\'][rwa]b["\']', line):
++                continue
++        for match in TEXT_IO_CALL.finditer(line):
++            missing.append(f"{lineno}: {line.strip()}")
++    return missing
++
++
++class DetectorSelfTests(unittest.TestCase):
++    """The scanner itself must actually catch what it claims to catch."""
++
++    def test_flags_read_text_without_encoding(self):
++        offenders = _calls_missing_encoding('content = path.read_text()\n')
++        self.assertEqual(len(offenders), 1)
++
++    def test_flags_bare_open_without_encoding(self):
++        offenders = _calls_missing_encoding('with open(path) as f:\n')
++        self.assertEqual(len(offenders), 1)
++
++    def test_does_not_flag_calls_with_explicit_encoding(self):
++        offenders = _calls_missing_encoding('content = path.read_text(encoding="utf-8")\n')
++        self.assertEqual(offenders, [])
++
++    def test_does_not_flag_binary_mode_open(self):
++        offenders = _calls_missing_encoding('with open(path, "rb") as f:\n')
++        self.assertEqual(offenders, [])
++
++    def test_does_not_flag_unrelated_dot_open_methods(self):
++        offenders = _calls_missing_encoding('webbrowser.open(str(live_report_path))\n')
++        self.assertEqual(offenders, [])
++
++
++class Utf8FileIoTests(unittest.TestCase):
++    def test_no_text_io_call_is_missing_an_explicit_encoding(self):
++        offenders = {}
++        for py_file in sorted(SKILL_CREATOR_ROOT.rglob("*.py")):
++            if "tests" in py_file.parts or "__pycache__" in py_file.parts:
++                continue
++            source = py_file.read_text(encoding="utf-8")
++            calls = _calls_missing_encoding(source)
++            if calls:
++                offenders[str(py_file.relative_to(SKILL_CREATOR_ROOT))] = calls
++
++        self.assertEqual(
++            offenders,
++            {},
++            "Found text I/O calls without an explicit encoding= (see patch "
++            "0002-utf8-file-io.patch for why this matters)",
++        )
++
++
++if __name__ == "__main__":
++    unittest.main()

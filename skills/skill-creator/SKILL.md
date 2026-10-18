@@ -3,8 +3,10 @@ name: skill-creator
 description: Create new skills, modify and improve existing skills, and measure skill performance. Use when users want to create a skill from scratch, edit, or optimize an existing skill, run evals to test a skill, benchmark skill performance with variance analysis, or optimize a skill's description for better triggering accuracy.
 ---
 > Fork of anthropics/skills `skills/skill-creator` with Windows fixes (pipe reader, UTF-8 file I/O,
-> `--project-root`, real-skill trigger detection). Upstream commit and patches: `vendor/skill-creator/`
-> in CtrlCarlitos/skills. Drop-in: same name, same description. Upstream issue anthropics/skills#1827.
+> `--project-root`, real-skill trigger detection) and eval-validity fixes (contaminated results from
+> an installed same-named skill, harness errors masked as a 0% score). Upstream commit, patches, and
+> audit findings: `vendor/skill-creator/` in CtrlCarlitos/skills. Drop-in: same name, same description.
+> Upstream issue anthropics/skills#1827.
 
 
 # Skill Creator
