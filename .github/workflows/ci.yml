@@ -29,6 +29,20 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      # Runs before any test/build step: unittest's __pycache__ output would
+      # otherwise show up as "new files" against the pristine rebuild below,
+      # a false drift report unrelated to the mode-bit flakiness this step
+      # is actually checking for. See the ubuntu-latest job's step order.
+      #
+      # Known-flaky, permanently non-blocking: confirmed (not just suspected)
+      # that this fails on Windows -- git-for-Windows/NTFS doesn't track Unix
+      # executable bits the way Linux does, so --check's mode comparison
+      # reports a mismatch here even when the content is identical. Kept for
+      # visibility only; see vendor/skill-creator/DISPOSITION.md.
+      - name: skill-creator equals upstream pin + patches (known-flaky mode check)
+        shell: bash
+        continue-on-error: true
+        run: bash scripts/sync-skill-creator.sh --check
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
@@ -40,12 +54,29 @@ jobs:
       - name: sync-skill-creator.sh diff-portability test
         shell: bash
         run: bash scripts/tests/test_sync_skill_creator.sh
-      # Known-flaky, permanently non-blocking: confirmed (not just suspected)
-      # that this fails on Windows -- git-for-Windows/NTFS doesn't track Unix
-      # executable bits the way Linux does, so --check's mode comparison
-      # reports a mismatch here even when the content is identical. Kept for
-      # visibility only; see vendor/skill-creator/DISPOSITION.md.
-      - name: skill-creator equals upstream pin + patches (known-flaky mode check)
-        shell: bash
-        continue-on-error: true
+
+  skill-creator-tests-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Runs before any test/build step, same reason as the Windows job
+      # above: unittest's __pycache__ output would otherwise show up as
+      # "new files" against the pristine rebuild, a false drift report.
+      #
+      # Not continue-on-error here, unlike the Windows job: macOS's filesystem
+      # (unlike NTFS) tracks Unix executable bits the same way Linux does, and
+      # this is also the first real verification that the macOS diff-tool fix
+      # from #9 (git diff --no-index --ignore-cr-at-eol, replacing the
+      # GNU-only `diff -r --strip-trailing-cr`) actually works on real macOS.
+      - name: skill-creator equals upstream pin + patches
         run: bash scripts/sync-skill-creator.sh --check
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: install skill-creator dependencies
+        run: pip install -r skills/skill-creator/requirements.txt
+      - name: skill-creator regression tests
+        working-directory: skills/skill-creator
+        run: python3 -m unittest discover -s tests -v
+      - name: sync-skill-creator.sh diff-portability test
+        run: bash scripts/tests/test_sync_skill_creator.sh
