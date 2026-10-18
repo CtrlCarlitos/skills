@@ -1,21 +1,38 @@
-"""Tests for the Codex and OpenCode eval-trigger adapters (CtrlCarlitos/
-skills#10): each harness has its own non-interactive structured-output
-mode and its own way of representing "a skill was invoked" -- neither
-looks like Claude's discrete `tool_use` block for a `Skill` tool.
+"""Tests for the Codex, OpenCode, and Antigravity eval-trigger adapters
+(CtrlCarlitos/skills#10): each harness has its own non-interactive
+structured-output mode and its own way of representing "a skill was
+invoked" -- none of them look like Claude's discrete `tool_use` block
+for a `Skill` tool.
 
 Confirmed live before writing these fixtures (not invented): captured a
-real `codex exec --json` and a real `opencode run --format json` run,
-each asked to use a real skill against a real repo, and inspected the
-actual event shapes. The fixtures below are those real shapes, with only
-the repo-specific paths/ids trimmed.
+real `codex exec --json`, a real `opencode run --format json`, and a
+real `agy --output-format stream-json` run, each asked to use a real
+skill against a real repo, and inspected the actual event shapes. The
+fixtures below are those real shapes, with only the repo-specific
+paths/ids trimmed.
 
 - Codex has no discrete skill tool at all. Skill loading shows up as an
   `item.completed` / `command_execution` event whose `command` field is
   literally `cat <path>/<skill-name>/SKILL.md`.
-- OpenCode has the cleanest signal of all three: a discrete `tool_use`
+- OpenCode has the cleanest signal of the three: a discrete `tool_use`
   event with `part.tool == "skill"` and `part.state.input.name ==
   "<skill-name>"` -- structurally equivalent to Claude's own Skill tool,
   just lowercase and shaped differently.
+- Antigravity also has no discrete skill tool. A skill load shows up as
+  a `step_update` event with `step_type == "tool"`, `tool_name ==
+  "view_file"`, and `tool_info.parameters.AbsolutePath` pointing at the
+  skill's `SKILL.md`.
+
+**Correction, recorded here rather than silently fixed:** an earlier
+version of this PR (#27, merged) claimed Antigravity doesn't reliably
+discover project-local `.agents/skills/` skills at all, and shipped with
+no Antigravity adapter for that reason. That claim was wrong -- it
+conflated "a `disable-model-invocation`-flagged skill is suppressed from
+discovery" (real, confirmed for `show-me` in #12) with "project-local
+skills aren't discovered at all" (false: an *unflagged* throwaway proxy
+skill, the exact mechanism this adapter needs, was discovered and
+invoked correctly). Re-confirmed live before writing this fix. See
+`vendor/skill-creator/DISPOSITION.md` for the full correction.
 
 Run from skills/skill-creator/: python3 -m unittest discover -s tests
 """
@@ -26,9 +43,11 @@ import unittest
 from pathlib import Path
 
 from scripts.run_eval import (
+    _agy_event_indicates_trigger,
     _codex_event_indicates_trigger,
     _opencode_event_indicates_trigger,
     _read_json_lines_with_timeout,
+    _run_single_query_agy,
     _run_single_query_codex,
     _run_single_query_opencode,
     _write_proxy_agents_skill,
@@ -126,6 +145,72 @@ class OpencodeEventIndicatesTriggerTests(unittest.TestCase):
         event = {"type": "step_start"}
 
         self.assertFalse(_opencode_event_indicates_trigger(event, "code-search-skill-a1b2c3d4"))
+
+
+class AgyEventIndicatesTriggerTests(unittest.TestCase):
+    def test_a_real_view_file_skill_load_is_recognized(self):
+        """Captured live: agy's actual step_update event when it reads
+        a skill named 'probe-recheck-skill-x9y8z7' via view_file."""
+        event = {
+            "event": "step_update",
+            "step_update": {
+                "conversation_id": "a9bf10f3-279e-43a2-b909-7b35af9d9c18",
+                "step_index": 2,
+                "state": "ACTIVE",
+                "step_type": "tool",
+                "tool_name": "view_file",
+                "tool_info": {
+                    "name": "view_file",
+                    "parameters": {
+                        "AbsolutePath": (
+                            "/some/project/.agents/skills/probe-recheck-skill-x9y8z7/SKILL.md"
+                        )
+                    },
+                },
+            },
+        }
+
+        self.assertTrue(_agy_event_indicates_trigger(event, "probe-recheck-skill-x9y8z7"))
+
+    def test_a_different_skills_load_is_not_a_false_positive(self):
+        event = {
+            "event": "step_update",
+            "step_update": {
+                "step_type": "tool",
+                "tool_name": "view_file",
+                "tool_info": {"parameters": {"AbsolutePath": "/some/project/.agents/skills/other-skill-ffffffff/SKILL.md"}},
+            },
+        }
+
+        self.assertFalse(_agy_event_indicates_trigger(event, "probe-recheck-skill-x9y8z7"))
+
+    def test_a_view_file_on_an_unrelated_file_is_not_a_trigger(self):
+        """Real example: agy also view_files README.md and other
+        project files while investigating a task, unrelated to skill
+        loading."""
+        event = {
+            "event": "step_update",
+            "step_update": {
+                "step_type": "tool",
+                "tool_name": "view_file",
+                "tool_info": {"parameters": {"AbsolutePath": "/some/project/README.md"}},
+            },
+        }
+
+        self.assertFalse(_agy_event_indicates_trigger(event, "probe-recheck-skill-x9y8z7"))
+
+    def test_a_non_view_file_tool_is_not_a_trigger(self):
+        event = {
+            "event": "step_update",
+            "step_update": {"step_type": "tool", "tool_name": "run_command", "tool_info": {"parameters": {}}},
+        }
+
+        self.assertFalse(_agy_event_indicates_trigger(event, "probe-recheck-skill-x9y8z7"))
+
+    def test_a_non_step_update_event_is_not_a_trigger(self):
+        event = {"event": "init", "init": {}}
+
+        self.assertFalse(_agy_event_indicates_trigger(event, "probe-recheck-skill-x9y8z7"))
 
 
 class WriteProxyAgentsSkillTests(unittest.TestCase):
@@ -288,6 +373,47 @@ class RealOpencodeAdapterTests(unittest.TestCase):
                 "probe-skill-xyz",
                 "Use this skill whenever the user mentions probe-skill-xyz.",
                 60,
+                str(project_root),
+            )
+
+            self.assertFalse(triggered)
+
+
+@unittest.skipUnless(shutil.which("agy"), "agy (Antigravity) is not installed in this environment")
+class RealAgyAdapterTests(unittest.TestCase):
+    def test_a_query_that_should_trigger_the_skill_does(self):
+        with tempfile.TemporaryDirectory() as project_root:
+            project_root = Path(project_root)
+            subprocess.run(["git", "init", "-q", "-b", "main"], cwd=project_root, check=True)
+            subprocess.run(
+                ["git", "commit", "-q", "--allow-empty", "-m", "init", "--author", "x <x@x.com>"],
+                cwd=project_root, check=True,
+            )
+
+            triggered = _run_single_query_agy(
+                "Use the probe-skill-xyz skill right now; it is required for this task.",
+                "probe-skill-xyz",
+                "Use this skill whenever the user mentions probe-skill-xyz.",
+                90,
+                str(project_root),
+            )
+
+            self.assertTrue(triggered)
+
+    def test_an_unrelated_query_does_not_trigger_the_skill(self):
+        with tempfile.TemporaryDirectory() as project_root:
+            project_root = Path(project_root)
+            subprocess.run(["git", "init", "-q", "-b", "main"], cwd=project_root, check=True)
+            subprocess.run(
+                ["git", "commit", "-q", "--allow-empty", "-m", "init", "--author", "x <x@x.com>"],
+                cwd=project_root, check=True,
+            )
+
+            triggered = _run_single_query_agy(
+                "What is 2 + 2? Just answer the number, nothing else.",
+                "probe-skill-xyz",
+                "Use this skill whenever the user mentions probe-skill-xyz.",
+                90,
                 str(project_root),
             )
 
