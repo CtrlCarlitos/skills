@@ -17,6 +17,8 @@ jobs:
             grep -q '^name: ' "$f" && grep -q '^description: ' "$f" || { echo "FAIL: $f"; exit 1; }
           done
           echo PASS
+      - name: install skill-creator dependencies
+        run: pip install -r skills/skill-creator/requirements.txt
       - name: skill-creator regression tests
         working-directory: skills/skill-creator
         run: python3 -m unittest discover -s tests -v
@@ -30,6 +32,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
+      - name: install skill-creator dependencies
+        run: pip install -r skills/skill-creator/requirements.txt
       - name: skill-creator regression tests
         working-directory: skills/skill-creator
         run: python -m unittest discover -s tests -v

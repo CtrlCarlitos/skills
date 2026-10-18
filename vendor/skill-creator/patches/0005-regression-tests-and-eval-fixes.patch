@@ -38,6 +38,13 @@ index 675dce4..b9bfcd6 100644
  
  
  # Skill Creator
+diff --git a/skills/skill-creator/requirements.txt b/skills/skill-creator/requirements.txt
+new file mode 100644
+index 0000000..c3726e8
+--- /dev/null
++++ b/skills/skill-creator/requirements.txt
+@@ -0,0 +1 @@
++pyyaml
 diff --git a/skills/skill-creator/scripts/run_eval.py b/skills/skill-creator/scripts/run_eval.py
 index 0cb2777..09af252 100755
 --- a/skills/skill-creator/scripts/run_eval.py
