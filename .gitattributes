@@ -1,0 +1,9 @@
+# Normalize all text files to LF, both in the repo and on checkout, regardless
+# of core.autocrlf, so the repo behaves the same on Windows and Linux/WSL.
+* text=auto eol=lf
+
+# Shell scripts must keep LF or they fail to run (bad interpreter) when CRLF.
+*.sh text eol=lf
+
+# Patches are matched against LF source trees; keep them LF and skip diff heuristics.
+*.patch text eol=lf -diff
