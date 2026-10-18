@@ -1,0 +1,38 @@
+# repo-policy's built-in default. Used only when a repo has no
+# .repo-policy/policy.yaml of its own and the user has no matching
+# ~/.config/repo-policy/policies/<name>.yaml. See writing-a-policy.md
+# before copying this to start your own -- every key here is optional;
+# omit what you don't want audited.
+
+default_branch: main
+
+merge_strategy: squash_only   # one of: squash_only, merge_only, rebase_only, any
+delete_branch_on_merge: true
+
+require_pull_request: true
+required_approving_review_count: 1
+require_code_owner_review: false
+required_review_thread_resolution: true
+required_signatures: false
+required_linear_history: true
+block_force_push: true
+block_branch_deletion: true
+
+# Repo-specific: leave empty by default. A specific repo's own
+# .repo-policy/policy.yaml should list its actual required CI job names.
+required_status_checks: []
+
+release_tags_protected: true
+
+codeowners: true
+contributing: true
+security_md: true
+pr_template: true
+issue_templates: true
+dependabot: true   # only flagged as a gap when the repo has a dependency manifest at all
+agents_md: true    # only flagged as a gap when the repo already looks agentic (.claude/, CLAUDE.md, .cursor/, etc.)
+
+# Documented, justified exceptions: setting key -> reason. A row with a
+# matching key is reported as "Exception: <reason>", never silently
+# dropped and never reported as a plain unresolved gap.
+exceptions: {}
