@@ -19,7 +19,7 @@ _DECK = {
     "cards": [{"card_id": "c1", "subject": "lenguaje", "topic": "sustantivos", "competency": None, "prompt": "Perro", "answer": "Sustantivo"}],
 }
 
-class AuditBundleCliTests(unittest.TestCase):
+class AuditBundleBuildCliTests(unittest.TestCase):
     def test_writes_the_exam_and_flashcard_pages_and_the_topic_index(self):
         with tempfile.TemporaryDirectory() as root:
             exam_path = Path(root) / "exam.json"
@@ -29,7 +29,7 @@ class AuditBundleCliTests(unittest.TestCase):
             workspace = Path(root) / "family"
 
             subprocess.run(
-                [sys.executable, "-m", "scripts.audit_bundle", str(workspace), "mateo", str(exam_path), str(deck_path)],
+                [sys.executable, "-m", "scripts.audit_bundle", "build", str(workspace), "mateo", str(exam_path), str(deck_path)],
                 cwd=_SKILL_ROOT, capture_output=True, text=True, check=True,
             )
 
@@ -48,10 +48,29 @@ class AuditBundleCliTests(unittest.TestCase):
             workspace = Path(root) / "family"
 
             subprocess.run(
-                [sys.executable, "-m", "scripts.audit_bundle", str(workspace), "mateo", str(exam_path), str(deck_path), "--practice"],
+                [sys.executable, "-m", "scripts.audit_bundle", "build", str(workspace), "mateo", str(exam_path), str(deck_path), "--practice"],
                 cwd=_SKILL_ROOT, capture_output=True, text=True, check=True,
             )
 
             topic = workspace / "children" / "mateo" / "subjects" / "lenguaje" / "sustantivos"
             self.assertTrue((topic / "practice.html").exists())
             self.assertNotIn("downloadResults", (topic / "practice.html").read_text(encoding="utf-8"))
+
+class AuditBundleRecordCliTests(unittest.TestCase):
+    def test_records_a_flashcard_session_from_the_downloaded_results_export(self):
+        with tempfile.TemporaryDirectory() as root:
+            deck_path = Path(root) / "deck.json"
+            deck_path.write_text(json.dumps(_DECK), encoding="utf-8")
+            results_path = Path(root) / "results.json"
+            results_path.write_text(json.dumps({"deck_id": "deck1", "results": [{"card_id": "c1", "result": "incorrect"}]}), encoding="utf-8")
+            workspace = Path(root) / "family"
+
+            subprocess.run(
+                [sys.executable, "-m", "scripts.audit_bundle", "record", str(workspace), "mateo", str(deck_path), str(results_path), "2026-10-19"],
+                cwd=_SKILL_ROOT, capture_output=True, text=True, check=True,
+            )
+
+            history_path = workspace / "children" / "mateo" / "subjects" / "lenguaje" / "flashcard_history.json"
+            history = json.loads(history_path.read_text(encoding="utf-8"))
+            self.assertEqual(history[0]["deck_id"], "deck1")
+            self.assertEqual(history[0]["results"], [{"card_id": "c1", "result": "incorrect"}])

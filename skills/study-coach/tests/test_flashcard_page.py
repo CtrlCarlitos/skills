@@ -65,3 +65,35 @@ class RenderFlashcardHtmlTests(unittest.TestCase):
 
         self.assertIn('lang="en"', html)
         self.assertIn("Download results", html)
+
+    def test_the_answer_is_hidden_until_the_card_is_flipped(self):
+        card = make_flashcard("c1", "lenguaje", "sustantivos", "Perro", "Sustantivo")
+        deck = make_deck("deck1", "mateo", "lenguaje", "sustantivos", [card])
+
+        html = render_flashcard_html(deck)
+
+        self.assertIn("<style>", html)
+        self.assertIn(".back{display:none}", html)
+        self.assertIn(".card.flipped .back{display:block}", html)
+
+    def test_a_card_appearing_twice_in_the_deck_gets_two_distinct_dom_identities(self):
+        # select_cards_for_review resurfaces a missed card by duplicating
+        # its dict in the list -- each rendered appearance needs its own
+        # DOM identity so flipping or marking one never affects the other,
+        # and a miss on either copy must still be attributable to the card.
+        card = make_flashcard("c1", "lenguaje", "sustantivos", "Perro", "Sustantivo")
+        deck = make_deck("deck1", "mateo", "lenguaje", "sustantivos", [card, card])
+
+        html = render_flashcard_html(deck)
+
+        self.assertIn('data-card-index="0"', html)
+        self.assertIn('data-card-index="1"', html)
+        self.assertEqual(html.count('data-card-id="c1"'), 2)
+
+    def test_download_wraps_results_with_the_deck_id(self):
+        card = make_flashcard("c1", "lenguaje", "sustantivos", "Perro", "Sustantivo")
+        deck = make_deck("deck1", "mateo", "lenguaje", "sustantivos", [card])
+
+        html = render_flashcard_html(deck)
+
+        self.assertIn("deck_id: deck.deck_id", html)

@@ -33,21 +33,32 @@ class RecordFlashcardSessionTests(unittest.TestCase):
             self.assertEqual([h["reviewed_at"] for h in history], ["2026-10-19", "2026-10-26"])
 
 class ComputeCardWeaknessTests(unittest.TestCase):
-    def test_counts_misses_per_card_across_every_session(self):
+    def test_counts_misses_per_topic_scoped_card_across_every_session(self):
         history = [
-            {"deck_id": "deck1", "results": [{"card_id": "c1", "result": "incorrect"}, {"card_id": "c2", "result": "correct"}]},
-            {"deck_id": "deck1", "results": [{"card_id": "c1", "result": "incorrect"}]},
+            {"deck_id": "deck1", "topic": "sustantivos", "results": [{"card_id": "c1", "result": "incorrect"}, {"card_id": "c2", "result": "correct"}]},
+            {"deck_id": "deck1", "topic": "sustantivos", "results": [{"card_id": "c1", "result": "incorrect"}]},
         ]
 
         weakness = compute_card_weakness(history)
 
-        self.assertEqual(weakness, {"c1": 2})
+        self.assertEqual(weakness, {("sustantivos", "c1"): 2})
+
+    def test_the_same_card_id_in_a_different_topic_is_never_conflated(self):
+        # card_ids are generated per deck (e.g. "c1", "c2", ...) by whichever
+        # session built the deck -- two different topics' decks can easily
+        # reuse the same id for an unrelated card, so weakness must be
+        # scoped by topic, not just by card_id.
+        history = [{"deck_id": "deck1", "topic": "sustantivos", "results": [{"card_id": "c1", "result": "incorrect"}]}]
+
+        weakness = compute_card_weakness(history)
+
+        self.assertNotIn(("verbos", "c1"), weakness)
 
 class SelectCardsForReviewTests(unittest.TestCase):
     def test_a_card_missed_before_appears_twice_a_card_never_missed_appears_once(self):
         c1 = make_flashcard("c1", "lenguaje", "sustantivos", "Perro", "Sustantivo")
         c2 = make_flashcard("c2", "lenguaje", "sustantivos", "Correr", "Verbo")
-        history = [{"deck_id": "deck1", "results": [{"card_id": "c1", "result": "incorrect"}]}]
+        history = [{"deck_id": "deck1", "topic": "sustantivos", "results": [{"card_id": "c1", "result": "incorrect"}]}]
 
         deck = select_cards_for_review([c1, c2], history)
 
@@ -61,3 +72,11 @@ class SelectCardsForReviewTests(unittest.TestCase):
         deck = select_cards_for_review([c1, c2], [])
 
         self.assertEqual(deck, [c1, c2])
+
+    def test_a_miss_on_one_topic_never_resurfaces_a_same_id_card_in_another_topic(self):
+        verbos_c1 = make_flashcard("c1", "lenguaje", "verbos", "Correr", "Verbo")
+        history = [{"deck_id": "deck1", "topic": "sustantivos", "results": [{"card_id": "c1", "result": "incorrect"}]}]
+
+        deck = select_cards_for_review([verbos_c1], history)
+
+        self.assertEqual(deck, [verbos_c1])

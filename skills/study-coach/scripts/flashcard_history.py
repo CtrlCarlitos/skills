@@ -23,11 +23,16 @@ def record_flashcard_session(child_dir, deck_id, subject, topic, reviewed_at, re
 
 
 def compute_card_weakness(history):
+    # Keyed by (topic, card_id), never card_id alone -- card_ids are
+    # generated per deck (e.g. "c1", "c2", ...) by whichever session built
+    # it, so two different topics' decks can easily reuse the same id for
+    # an unrelated card.
     weakness = {}
     for entry in history:
         for result in entry["results"]:
             if result["result"] == "incorrect":
-                weakness[result["card_id"]] = weakness.get(result["card_id"], 0) + 1
+                key = (entry["topic"], result["card_id"])
+                weakness[key] = weakness.get(key, 0) + 1
     return weakness
 
 
@@ -36,7 +41,7 @@ def select_cards_for_review(cards, history, max_extra_appearances=1):
     selected = []
     for card in cards:
         selected.append(card)
-        misses = weakness.get(card["card_id"], 0)
+        misses = weakness.get((card["topic"], card["card_id"]), 0)
         extra = min(misses, max_extra_appearances)
         selected.extend([card] * extra)
     return selected

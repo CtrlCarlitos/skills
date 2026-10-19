@@ -5,8 +5,14 @@ import random
 from scripts.exam_schema import QUESTION_TYPES, validate_correct_answer_shape
 
 _LABELS = {
-    "es": {"true": "Verdadero", "false": "Falso", "download": "Descargar resultados", "choose": "-- elige --", "show_results": "Ver resultados"},
-    "en": {"true": "True", "false": "False", "download": "Download results", "choose": "-- choose --", "show_results": "Show my results"},
+    "es": {
+        "true": "Verdadero", "false": "Falso", "download": "Descargar resultados", "choose": "-- elige --",
+        "show_results": "Ver resultados", "practice_banner": "Práctica: esto no cuenta",
+    },
+    "en": {
+        "true": "True", "false": "False", "download": "Download results", "choose": "-- choose --",
+        "show_results": "Show my results", "practice_banner": "Practice: this doesn't count",
+    },
 }
 
 _SELF_GRADING_SCRIPT = """
@@ -168,17 +174,22 @@ def render_exam_html(exam, language="es", mode="exam"):
     exam_json = json.dumps(exam).replace("</", "<\\/")
 
     if mode == "practice":
+        banner_html = f'<h2 id="practice-banner">{html.escape(labels["practice_banner"])}</h2>'
         action_html = f'<button onclick="showResults()">{html.escape(labels["show_results"])}</button><div id="practice-results"></div>'
         script = _SELF_GRADING_SCRIPT + "\n\n" + _PRACTICE_RESULTS_SCRIPT
+        title = f'{html.escape(exam["exam_id"])} ({html.escape(labels["practice_banner"])})'
     else:
+        banner_html = ""
         action_html = f'<button onclick="downloadResults()">{html.escape(labels["download"])}</button>'
         script = _SELF_GRADING_SCRIPT + "\n\n" + _DOWNLOAD_RESULTS_SCRIPT
+        title = html.escape(exam["exam_id"])
 
     return f"""<!doctype html>
 <html lang="{language}">
-<head><meta charset="utf-8"><title>{html.escape(exam["exam_id"])}</title></head>
+<head><meta charset="utf-8"><title>{title}</title></head>
 <body>
 <script type="application/json" id="exam-data">{exam_json}</script>
+{banner_html}
 {questions_html}
 {action_html}
 <script>{script}</script>

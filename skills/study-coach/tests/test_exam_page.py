@@ -151,3 +151,31 @@ class RenderExamHtmlTests(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             render_exam_html(exam, mode="rehearsal")
+
+    def test_practice_mode_shows_a_visible_practice_banner(self):
+        # The spec's panic-vs-fluency framing depends on the kid being able
+        # to tell a practice attempt apart from the real exam -- a missing
+        # label would make a rehearsal look identical to the thing that
+        # actually counts.
+        q = make_question("q1", "true_false", "lenguaje", "sustantivos", "Perro is a noun.", correct_answer=True)
+        exam = make_exam("exam1", "mateo", "lenguaje", "sustantivos", "4", [q])
+
+        html = render_exam_html(exam, mode="practice")
+
+        self.assertIn("Práctica", html)
+
+    def test_practice_mode_banner_in_english(self):
+        q = make_question("q1", "true_false", "lenguaje", "sustantivos", "Perro is a noun.", correct_answer=True)
+        exam = make_exam("exam1", "mateo", "lenguaje", "sustantivos", "4", [q])
+
+        html = render_exam_html(exam, mode="practice", language="en")
+
+        self.assertIn("Practice", html)
+
+    def test_exam_mode_shows_no_practice_banner(self):
+        q = make_question("q1", "true_false", "lenguaje", "sustantivos", "Perro is a noun.", correct_answer=True)
+        exam = make_exam("exam1", "mateo", "lenguaje", "sustantivos", "4", [q])
+
+        html = render_exam_html(exam)
+
+        self.assertNotIn("Práctica", html)
