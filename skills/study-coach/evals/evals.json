@@ -122,9 +122,51 @@
     {
       "id": "bundle-overwrites-not-accumulates",
       "category": "bundle",
-      "description": "Writing a topic's bundle a second time (e.g. after regenerating content) must overwrite the previous exam.html/flashcards.html/practice.html cleanly, never accumulate stale duplicates -- the opposite of the history files, which must accumulate, and deliberately so: a bundle is 'current materials,' not a log.",
+      "description": "Writing a topic's bundle a second time (e.g. after regenerating content) must overwrite the previous exam.html/flashcards.html/practice.html cleanly, never accumulate stale duplicates -- the opposite of the history files, which must accumulate, and deliberately so: a bundle is 'current materials,' not a log. A rewrite that omits a previously-written file must delete it, and the topic index must reflect what's actually on disk, not a stale record of one call's own writes.",
       "status": "verified-live",
-      "verification": "tests/test_bundle.py::test_a_second_write_overwrites_the_first_rather_than_accumulating."
+      "verification": "tests/test_bundle.py::test_a_second_write_overwrites_the_first_rather_than_accumulating, test_a_rewrite_that_omits_a_previously_written_file_removes_it, test_links_only_the_files_actually_present_on_disk, and test_reflects_disk_state_even_when_called_without_this_calls_written_dict."
+    },
+    {
+      "id": "flashcard-answer-is-actually-hidden-until-flipped",
+      "category": "flashcards",
+      "description": "Found live by a fresh whole-branch review rendering the real deck page: it had no CSS at all, so a card's answer was visible from the moment the page opened -- 'tap/click to reveal the answer' never actually hid anything, and 'Got it'/'Missed it' meant nothing with the answer already showing. This is the flashcard equivalent of Plan 2's Critical true/false bug -- client-side behavior assumed correct because the markup looked right, never actually rendered and observed. Fixed with a hide-until-flipped CSS rule.",
+      "status": "verified-live",
+      "verification": "tests/test_flashcard_page.py::test_the_answer_is_hidden_until_the_card_is_flipped."
+    },
+    {
+      "id": "resurfaced-duplicate-cards-have-independent-dom-identity",
+      "category": "flashcards",
+      "description": "select_cards_for_review can render the same card twice (to resurface it). Found live that duplicates sharing one DOM identity (data-card-id alone) meant flipping one copy flipped both, and a miss on one copy could be silently overwritten if the other copy was later marked correct -- discarding exactly the signal resurfacing exists to catch. Each rendered appearance now gets its own data-card-index; the export aggregates per card_id with any 'incorrect' mark on any appearance winning.",
+      "status": "verified-live",
+      "verification": "tests/test_flashcard_page.py::test_a_card_appearing_twice_in_the_deck_gets_two_distinct_dom_identities (structural), and manually verified live under node (ad hoc, not committed -- stdlib-only constraint) that index 0 marked correct + index 2 (the same card_id, resurfaced) marked incorrect exports card_id 'c1' as 'incorrect' overall."
+    },
+    {
+      "id": "flashcard-streak-resets-on-a-miss-in-click-order",
+      "category": "flashcards",
+      "description": "Found live under node: the first version recomputed points/streak from Object.values(marks) on every mark, which follows JS object key order (and sorts integer-like string keys numerically), not the order the kid actually clicked in -- a miss did not reliably reset the streak, the engagement layer's one stated rule. Replaced with simple running counters updated per click.",
+      "status": "verified-live",
+      "verification": "Manually verified live under node (ad hoc, not committed): Got, Got, Missed, Got now shows streak 1 after the sequence, not 2; the old implementation showed 2 (never reset)."
+    },
+    {
+      "id": "flashcard-weakness-is-scoped-by-topic",
+      "category": "flashcards",
+      "description": "compute_card_weakness/select_cards_for_review were keyed by card_id alone. Found live that card_ids are generated per deck (e.g. 'c1', 'c2', ...) with no uniqueness guarantee across topics -- a miss on one topic's 'c1' resurfaced an unrelated 'c1' in a different topic's deck. Now keyed by (topic, card_id).",
+      "status": "verified-live",
+      "verification": "tests/test_flashcard_history.py::test_the_same_card_id_in_a_different_topic_is_never_conflated and test_a_miss_on_one_topic_never_resurfaces_a_same_id_card_in_another_topic."
+    },
+    {
+      "id": "practice-mode-is-visibly-labeled-as-practice",
+      "category": "exam",
+      "description": "The plan's own Task 4 interface required practice mode to be 'visibly labeled as practice,' but the first version added only the 'Show my results' button text, with nothing on the page distinguishing it from a real exam at a glance -- found by the same review, against the plan's own stated requirement rather than a live script execution. Added an es/en banner shown only in practice mode.",
+      "status": "verified-live",
+      "verification": "tests/test_exam_page.py::test_practice_mode_shows_a_visible_practice_banner, test_practice_mode_banner_in_english, and test_exam_mode_shows_no_practice_banner."
+    },
+    {
+      "id": "flashcard-results-can-actually-be-re-ingested",
+      "category": "flashcards",
+      "description": "SKILL.md's full-bundle recipe told the invoking session to consult flashcard_history.json before building a deck, but nothing in the codebase ever wrote a session back into it -- found live while reviewing the documented recipe against the actual CLI surface. Added flashcard_results.py (parses the deck_id-wrapped export) and an `audit_bundle.py record` subcommand, the flashcard equivalent of `audit_exam.py score`'s reingestion step.",
+      "status": "verified-live",
+      "verification": "tests/test_audit_bundle.py::test_records_a_flashcard_session_from_the_downloaded_results_export."
     }
   ]
 }
