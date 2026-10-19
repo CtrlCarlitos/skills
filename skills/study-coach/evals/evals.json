@@ -97,6 +97,34 @@
       "description": "True/False, the download button, and the matching placeholder were hard-coded in English regardless of the exam's delivery language -- the spec requires delivery language to be a parameter, defaulting to Spanish for this family's actual use. render_exam_html now takes a language parameter (es/en label table, es default) and sets <html lang>.",
       "status": "verified-live",
       "verification": "tests/test_exam_page.py::test_defaults_to_spanish_labels_for_kid_facing_text and test_can_render_in_english_when_requested."
+    },
+    {
+      "id": "weak-flashcards-resurface-more",
+      "category": "flashcards",
+      "description": "A flashcard missed in an earlier session must be resurfaced more often in a later deck build than a card never missed -- select_cards_for_review weights by history, never just shuffling randomly.",
+      "status": "verified-live",
+      "verification": "tests/test_flashcard_history.py::test_a_card_missed_before_appears_twice_a_card_never_missed_appears_once, and test_no_history_at_all_returns_the_original_cards_unchanged."
+    },
+    {
+      "id": "flashcard-sessions-accumulate-not-replace",
+      "category": "flashcards",
+      "description": "The same deck reviewed in two separate sessions must accumulate both in the child's flashcard_history.json -- the opposite convention from Plan 2's exam dashboard, on purpose: a flashcard review has no 'correction to the same event' workflow the way an open-response exam review does, so every session is real, separate history.",
+      "status": "verified-live",
+      "verification": "tests/test_flashcard_history.py::test_reviewing_the_same_deck_twice_accumulates_both_sessions."
+    },
+    {
+      "id": "practice-mode-has-no-path-to-the-real-dashboard",
+      "category": "exam",
+      "description": "render_exam_html(exam, mode='practice') must have no mechanism that could reach the real exam_history.json/dashboard -- no download button, no Blob, no exported file anywhere in the page's own source, not merely a download that happens not to be called.",
+      "status": "verified-live",
+      "verification": "tests/test_exam_page.py::test_practice_mode_has_no_download_mechanism_at_all (asserts 'Blob' and 'downloadResults' are both absent from the page), and test_exam_mode_is_unaffected_by_the_new_parameter (regression check that the default mode is untouched)."
+    },
+    {
+      "id": "bundle-overwrites-not-accumulates",
+      "category": "bundle",
+      "description": "Writing a topic's bundle a second time (e.g. after regenerating content) must overwrite the previous exam.html/flashcards.html/practice.html cleanly, never accumulate stale duplicates -- the opposite of the history files, which must accumulate, and deliberately so: a bundle is 'current materials,' not a log.",
+      "status": "verified-live",
+      "verification": "tests/test_bundle.py::test_a_second_write_overwrites_the_first_rather_than_accumulating."
     }
   ]
 }
