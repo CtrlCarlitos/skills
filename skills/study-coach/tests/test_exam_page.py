@@ -124,3 +124,58 @@ class RenderExamHtmlTests(unittest.TestCase):
 
         self.assertIn('lang="en"', html)
         self.assertIn("Download results", html)
+
+    def test_practice_mode_has_no_download_mechanism_at_all(self):
+        q = make_question("q1", "true_false", "lenguaje", "sustantivos", "Perro is a noun.", correct_answer=True)
+        exam = make_exam("exam1", "mateo", "lenguaje", "sustantivos", "4", [q])
+
+        html = render_exam_html(exam, mode="practice")
+
+        self.assertNotIn("Blob", html)
+        self.assertNotIn("downloadResults", html)
+        self.assertIn("showResults", html)
+        self.assertIn('id="practice-results"', html)
+
+    def test_exam_mode_is_unaffected_by_the_new_parameter(self):
+        q = make_question("q1", "true_false", "lenguaje", "sustantivos", "Perro is a noun.", correct_answer=True)
+        exam = make_exam("exam1", "mateo", "lenguaje", "sustantivos", "4", [q])
+
+        html = render_exam_html(exam)
+
+        self.assertIn("Blob", html)
+        self.assertIn("downloadResults", html)
+
+    def test_rejects_an_unknown_mode(self):
+        q = make_question("q1", "true_false", "lenguaje", "sustantivos", "Perro is a noun.", correct_answer=True)
+        exam = make_exam("exam1", "mateo", "lenguaje", "sustantivos", "4", [q])
+
+        with self.assertRaises(ValueError):
+            render_exam_html(exam, mode="rehearsal")
+
+    def test_practice_mode_shows_a_visible_practice_banner(self):
+        # The spec's panic-vs-fluency framing depends on the kid being able
+        # to tell a practice attempt apart from the real exam -- a missing
+        # label would make a rehearsal look identical to the thing that
+        # actually counts.
+        q = make_question("q1", "true_false", "lenguaje", "sustantivos", "Perro is a noun.", correct_answer=True)
+        exam = make_exam("exam1", "mateo", "lenguaje", "sustantivos", "4", [q])
+
+        html = render_exam_html(exam, mode="practice")
+
+        self.assertIn("Práctica", html)
+
+    def test_practice_mode_banner_in_english(self):
+        q = make_question("q1", "true_false", "lenguaje", "sustantivos", "Perro is a noun.", correct_answer=True)
+        exam = make_exam("exam1", "mateo", "lenguaje", "sustantivos", "4", [q])
+
+        html = render_exam_html(exam, mode="practice", language="en")
+
+        self.assertIn("Practice", html)
+
+    def test_exam_mode_shows_no_practice_banner(self):
+        q = make_question("q1", "true_false", "lenguaje", "sustantivos", "Perro is a noun.", correct_answer=True)
+        exam = make_exam("exam1", "mateo", "lenguaje", "sustantivos", "4", [q])
+
+        html = render_exam_html(exam)
+
+        self.assertNotIn("Práctica", html)
