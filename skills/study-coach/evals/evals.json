@@ -27,6 +27,76 @@
       "description": "Invoking the skill's real entry-point command(s) with no explicit workspace override must never write family data inside this repo's own checkout.",
       "status": "documented-not-yet-run",
       "verification": "Needs a live check once Plan 3's actual parent-facing entry-point commands exist to invoke with a default path and confirm where they write. This plan's functions all take an explicit workspace: Path argument with no built-in default, so there is no code path yet that could default into this repo, but there is also no entry-point command yet to exercise end-to-end."
+    },
+    {
+      "id": "open-response-never-silently-graded",
+      "category": "exam",
+      "description": "An open/free-response question must grade as None at every stage (grade_answer, score_exam, needs_review, aggregate_topic_results) -- never guessed True or False.",
+      "status": "verified-live",
+      "verification": "tests/test_grading.py::test_open_response_always_returns_none, tests/test_grading.py::ScoreExamTests, tests/test_results.py::NeedsReviewTests."
+    },
+    {
+      "id": "unreviewed-answer-never-affects-a-topic-score",
+      "category": "exam",
+      "description": "A still-ungraded (None) result must be tracked as 'pending' and excluded from the graded total entirely -- not counted toward total without counting toward correct, which would silently lower a topic's score before any review grade exists. Renamed from an earlier, inaccurate 'never inflates' claim: a fresh review caught that the original implementation could still deflate a score, which is exactly what this guarantee says can't happen.",
+      "status": "verified-live",
+      "verification": "tests/test_report.py::test_an_unreviewed_open_response_question_is_pending_not_counted_toward_the_graded_total, and test_a_pending_open_response_never_changes_the_ratio_of_an_otherwise_solid_topic."
+    },
+    {
+      "id": "exam-history-accumulates-not-overwrites",
+      "category": "exam",
+      "description": "A second exam (a different exam_id) taken for a subject must accumulate in the child's exam_history.json, never overwrite a prior exam's entry -- the longitudinal dashboard view depends on a real history existing. Re-scoring the *same* exam_id (e.g. after an open-response review) replaces its own entry instead of duplicating it.",
+      "status": "verified-live",
+      "verification": "tests/test_dashboard.py::test_a_second_exam_for_the_same_subject_accumulates_rather_than_replacing, and test_recording_the_same_exam_id_again_replaces_its_entry_rather_than_duplicating_it."
+    },
+    {
+      "id": "insufficient-data-never-reported-as-solid-or-needs-work",
+      "category": "exam",
+      "description": "A topic with too few questions (below the 2-question minimum) must classify as insufficient_data, never a false 'solid' or 'needs_work' off a single data point.",
+      "status": "verified-live",
+      "verification": "tests/test_report.py::test_too_few_questions_is_insufficient_data_regardless_of_score, and the gap_report sort test putting insufficient_data entries last."
+    },
+    {
+      "id": "true-false-grading-bug-in-the-live-page",
+      "category": "exam",
+      "description": "Found live by a fresh whole-branch review running the real self-grading script under node: a radio's .value is always a string, so comparing it against a Python bool via JSON.stringify never matched -- every true/false question graded wrong regardless of the answer given. Fixed by mapping the chosen radio back to a real boolean (and, for multiple_choice/single_select, back to the original typed option value via its index) before grading or exporting.",
+      "status": "verified-live",
+      "verification": "Manually verified live under node (ad hoc, not a committed test -- this repo stays Python-stdlib-only) against the real script extracted from render_exam_html's own output: a correct true_false answer in both directions, and a non-string-typed multiple_choice correct_answer, both now grade and export correctly. The architecture fix below (score_exam as sole authority) is what the committed suite actually pins."
+    },
+    {
+      "id": "the-live-pages-own-correct-field-is-never-trusted",
+      "category": "exam",
+      "description": "The exported results file's 'correct' field comes from a second, independent reimplementation of grading logic running in the browser, which drifted from grading.py in confirmed ways (the true/false bug above, and a number-vs-string multiple_choice mismatch). scripts/audit_exam.py's score subcommand now recomputes every answer via grading.score_exam from the raw given_answer values and ignores the page's own claim entirely, matching the plan's own stated architecture ('grading.py is the only place that decides').",
+      "status": "verified-live",
+      "verification": "tests/test_audit_exam.py::test_score_recomputes_correctness_from_grading_py_ignoring_the_pages_own_correct_field -- a results file that deliberately lies ('correct': false for two right answers) is shown to be ignored; the CLI reports the true, recomputed classification."
+    },
+    {
+      "id": "correct-answer-shape-is-validated-against-its-question-type",
+      "category": "exam",
+      "description": "A correct_answer whose shape doesn't match its question type (e.g. a bare string instead of a list for fill_in_blank) previously corrupted Python's own grading silently (iterating the string's characters) and crashed the live page's download button outright. make_question and render_exam_html (which loads raw JSON and never goes through make_question) now both validate the shape and raise loudly instead.",
+      "status": "verified-live",
+      "verification": "tests/test_exam_schema.py's four new MakeQuestionTests shape-validation cases, and tests/test_exam_page.py::test_rejects_a_mismatched_correct_answer_shape_even_for_a_raw_loaded_exam."
+    },
+    {
+      "id": "matching-answer-key-is-never-readable-from-the-page-source",
+      "category": "exam",
+      "description": "A matching question's dropdown options were rendered in exactly the answer key's own order, so the correct choice for the n-th pair was always the n-th option -- and every select defaulted to its first option, so an untouched matching question graded as already correct. Options are now shuffled and every select starts on an empty, disabled placeholder.",
+      "status": "verified-live",
+      "verification": "tests/test_exam_page.py::test_matching_selects_have_no_preselected_default_answer."
+    },
+    {
+      "id": "a-script-closing-tag-in-question-text-cannot-break-the-page",
+      "category": "exam",
+      "description": "A question's own text containing a literal '</script>' would prematurely close the embedded #exam-data JSON block. The embedded JSON now escapes '</' to the equivalent, still-valid JSON '<\\/' -- json.loads round-trips it losslessly.",
+      "status": "verified-live",
+      "verification": "tests/test_exam_page.py::test_a_literal_script_closing_tag_in_a_prompt_does_not_break_the_embedded_json_block."
+    },
+    {
+      "id": "kid-facing-exam-text-defaults-to-spanish",
+      "category": "exam",
+      "description": "True/False, the download button, and the matching placeholder were hard-coded in English regardless of the exam's delivery language -- the spec requires delivery language to be a parameter, defaulting to Spanish for this family's actual use. render_exam_html now takes a language parameter (es/en label table, es default) and sets <html lang>.",
+      "status": "verified-live",
+      "verification": "tests/test_exam_page.py::test_defaults_to_spanish_labels_for_kid_facing_text and test_can_render_in_english_when_requested."
     }
   ]
 }
