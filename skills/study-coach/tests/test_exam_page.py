@@ -124,3 +124,30 @@ class RenderExamHtmlTests(unittest.TestCase):
 
         self.assertIn('lang="en"', html)
         self.assertIn("Download results", html)
+
+    def test_practice_mode_has_no_download_mechanism_at_all(self):
+        q = make_question("q1", "true_false", "lenguaje", "sustantivos", "Perro is a noun.", correct_answer=True)
+        exam = make_exam("exam1", "mateo", "lenguaje", "sustantivos", "4", [q])
+
+        html = render_exam_html(exam, mode="practice")
+
+        self.assertNotIn("Blob", html)
+        self.assertNotIn("downloadResults", html)
+        self.assertIn("showResults", html)
+        self.assertIn('id="practice-results"', html)
+
+    def test_exam_mode_is_unaffected_by_the_new_parameter(self):
+        q = make_question("q1", "true_false", "lenguaje", "sustantivos", "Perro is a noun.", correct_answer=True)
+        exam = make_exam("exam1", "mateo", "lenguaje", "sustantivos", "4", [q])
+
+        html = render_exam_html(exam)
+
+        self.assertIn("Blob", html)
+        self.assertIn("downloadResults", html)
+
+    def test_rejects_an_unknown_mode(self):
+        q = make_question("q1", "true_false", "lenguaje", "sustantivos", "Perro is a noun.", correct_answer=True)
+        exam = make_exam("exam1", "mateo", "lenguaje", "sustantivos", "4", [q])
+
+        with self.assertRaises(ValueError):
+            render_exam_html(exam, mode="rehearsal")

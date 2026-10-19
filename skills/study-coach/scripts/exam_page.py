@@ -5,8 +5,8 @@ import random
 from scripts.exam_schema import QUESTION_TYPES, validate_correct_answer_shape
 
 _LABELS = {
-    "es": {"true": "Verdadero", "false": "Falso", "download": "Descargar resultados", "choose": "-- elige --"},
-    "en": {"true": "True", "false": "False", "download": "Download results", "choose": "-- choose --"},
+    "es": {"true": "Verdadero", "false": "Falso", "download": "Descargar resultados", "choose": "-- elige --", "show_results": "Ver resultados"},
+    "en": {"true": "True", "false": "False", "download": "Download results", "choose": "-- choose --", "show_results": "Show my results"},
 }
 
 _SELF_GRADING_SCRIPT = """
@@ -51,7 +51,9 @@ function gradeAnswer(question, givenAnswer) {
   }
   return JSON.stringify(givenAnswer) === JSON.stringify(question.correct_answer);
 }
+""".strip()
 
+_DOWNLOAD_RESULTS_SCRIPT = """
 function downloadResults() {
   var exam = JSON.parse(document.getElementById("exam-data").textContent);
   var results = exam.questions.map(function (question) {
@@ -67,6 +69,34 @@ function downloadResults() {
   link.href = URL.createObjectURL(blob);
   link.download = exam.exam_id + "-results.json";
   link.click();
+}
+""".strip()
+
+# Practice mode shares readAnswer/gradeAnswer above, but never creates a
+# Blob or a downloadable file -- a practice attempt has no mechanism that
+# could reach the real exam_history.json/dashboard, by construction.
+_PRACTICE_RESULTS_SCRIPT = """
+function showResults() {
+  var exam = JSON.parse(document.getElementById("exam-data").textContent);
+  var tally = {};
+  exam.questions.forEach(function (question) {
+    var key = question.subject + "/" + question.topic;
+    if (!tally[key]) {
+      tally[key] = { correct: 0, total: 0 };
+    }
+    var givenAnswer = readAnswer(question);
+    var correct = gradeAnswer(question, givenAnswer);
+    if (correct !== null) {
+      tally[key].total += 1;
+      if (correct) {
+        tally[key].correct += 1;
+      }
+    }
+  });
+  var lines = Object.keys(tally).map(function (key) {
+    return key + ": " + tally[key].correct + "/" + tally[key].total;
+  });
+  document.getElementById("practice-results").textContent = lines.join(", ");
 }
 """.strip()
 
@@ -118,7 +148,10 @@ _RENDERERS = {
 }
 
 
-def render_exam_html(exam, language="es"):
+def render_exam_html(exam, language="es", mode="exam"):
+    if mode not in ("exam", "practice"):
+        raise ValueError(f"unknown mode: {mode!r}")
+
     labels = _LABELS[language]
     question_blocks = []
     for question in exam["questions"]:
@@ -134,13 +167,20 @@ def render_exam_html(exam, language="es"):
     # round-trips to the exact original exam dict.
     exam_json = json.dumps(exam).replace("</", "<\\/")
 
+    if mode == "practice":
+        action_html = f'<button onclick="showResults()">{html.escape(labels["show_results"])}</button><div id="practice-results"></div>'
+        script = _SELF_GRADING_SCRIPT + "\n\n" + _PRACTICE_RESULTS_SCRIPT
+    else:
+        action_html = f'<button onclick="downloadResults()">{html.escape(labels["download"])}</button>'
+        script = _SELF_GRADING_SCRIPT + "\n\n" + _DOWNLOAD_RESULTS_SCRIPT
+
     return f"""<!doctype html>
 <html lang="{language}">
 <head><meta charset="utf-8"><title>{html.escape(exam["exam_id"])}</title></head>
 <body>
 <script type="application/json" id="exam-data">{exam_json}</script>
 {questions_html}
-<button onclick="downloadResults()">{html.escape(labels["download"])}</button>
-<script>{_SELF_GRADING_SCRIPT}</script>
+{action_html}
+<script>{script}</script>
 </body>
 </html>"""
