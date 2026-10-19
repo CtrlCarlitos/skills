@@ -5,6 +5,8 @@ description: Build a curriculum-grounded learning bundle (flashcards/exam, video
 
 A new skill, not an extension of `teach` (a different shape of problem: solo adult learner, no video/exam/gamification/curriculum-grounding). Full design in `docs/superpowers/specs/2026-10-18-study-coach-design.md`. This skill now covers all three planned increments of "study-coach v1" -- Plan 1 (workspace + grounding), Plan 2 (exam engine), Plan 3 (flashcards + entry points) -- with video deferred to its own later issue.
 
+**Parent/user-facing walkthrough:** `GETTING-STARTED.md` in this folder -- a step-by-step guide to actually using the skill (asking Claude for a bundle, taking the exam, reviewing flashcards, reading the dashboard) and testing it yourself. This file below is written for the invoking Claude session, not for a human reader.
+
 ## What exists so far
 
 Grounding/workspace (Plan 1), the exam engine with its confidence-building practice mode (Plan 2 + this plan), flashcards with an engagement layer (this plan), and the two parent-facing entry points, documented below as recipes for the invoking Claude session to follow (see "Entry points"). **This skill's code never writes question or flashcard content** -- the invoking session generates grounded prompts/options/answers at runtime, via `ground_topic`, and calls the functions documented here; the code only validates, renders, grades, tracks, and persists whatever it's handed.
