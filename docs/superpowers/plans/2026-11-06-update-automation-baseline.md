@@ -180,9 +180,9 @@ Expected: HTTP 204.
 
 - [ ] **Step 2: Verify passive-only settings**
 
-Run: `gh api -i repos/CtrlCarlitos/skills/vulnerability-alerts` and `gh api repos/CtrlCarlitos/skills/automated-security-fixes`
+Run: `gh api -i repos/CtrlCarlitos/skills/vulnerability-alerts` and `gh api -i repos/CtrlCarlitos/skills/automated-security-fixes`
 
-Expected: vulnerability-alert request returns HTTP 204; automated security fixes report `enabled: false`.
+Expected: vulnerability-alert request returns HTTP 204; automated security fixes return HTTP 404, which is GitHub's disabled-state response for that endpoint.
 
 - [ ] **Step 3: Verify the merged workflows**
 

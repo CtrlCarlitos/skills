@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+import http.client
 import json
 import os
 from pathlib import Path
@@ -81,6 +82,8 @@ def github_json(url: str, token: str) -> dict:
     except (
         error.HTTPError,
         error.URLError,
+        http.client.HTTPException,
+        OSError,
         TimeoutError,
         UnicodeDecodeError,
         json.JSONDecodeError,

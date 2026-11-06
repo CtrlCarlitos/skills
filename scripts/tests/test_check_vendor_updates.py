@@ -181,6 +181,32 @@ class VendorUpdateTests(unittest.TestCase):
                     "https://api.github.com/repos/owner/repository", "token"
                 )
 
+    def test_main_returns_two_when_response_body_read_resets(self):
+        self.write_upstream()
+
+        class ResettingResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, traceback):
+                return False
+
+            def read(self):
+                raise ConnectionResetError("connection reset while reading")
+
+        with mock.patch.object(
+            check_vendor_updates.request,
+            "urlopen",
+            return_value=ResettingResponse(),
+        ):
+            with mock.patch.dict("os.environ", {"GH_TOKEN": "token"}, clear=True):
+                with contextlib.redirect_stderr(io.StringIO()):
+                    status = check_vendor_updates.main(
+                        ["--vendor-root", str(self.vendor_root), "example"]
+                    )
+
+        self.assertEqual(status, 2)
+
     def test_main_returns_one_and_names_stale_vendor(self):
         self.write_upstream("example")
         stale = check_vendor_updates.CheckResult(
