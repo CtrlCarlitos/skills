@@ -1,8 +1,8 @@
 # mp-code-review fork: provenance and findings
 
-Fork for CtrlCarlitos/skills#7. Checked 2026-10-18 against
-`mattpocock/skills` (upstream pin: `3da8c01116264675eeefbd6e9d59c734de9095cc`,
-2026-10-07, confirmed via the GitHub API as the latest commit touching
+Fork for CtrlCarlitos/skills#7. Checked 2026-11-06 against
+`mattpocock/skills` (upstream pin: `7739eaed7f8f3915437a8def198a6d0d7206dbc7`,
+2026-10-29, confirmed via the GitHub API as the latest commit touching
 `skills/engineering/code-review` as of this check).
 
 ## Why fork, not just rename
@@ -57,6 +57,15 @@ appears in the diff at all. No adoption of `setup-matt-pocock-skills` or
 Matt's tracker/process workflow, even partially; no new tracker
 integration is written, only detection of what's already there (a
 GitHub/GitLab remote) and direct use of the CLI the user already has.
+
+## 2026-11-06 upstream refresh
+
+Updated from `3da8c01116264675eeefbd6e9d59c734de9095cc` to
+`7739eaed7f8f3915437a8def198a6d0d7206dbc7`. The only upstream subtree
+change adds an explicit requirement to start each review sub-agent with a
+fresh context window. This fork adopts that instruction unchanged. The patch
+context was refreshed around that sentence; the local rename, tracker
+replacement, scripts, and tests are otherwise unchanged.
 
 ## Eval: baseline vs. candidate on the exact scenario being fixed
 

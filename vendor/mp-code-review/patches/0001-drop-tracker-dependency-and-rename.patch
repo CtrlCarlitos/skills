@@ -42,7 +42,7 @@ index 0000000..f1dd2c0
 +OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 +SOFTWARE.
 diff --git a/skills/mp-code-review/SKILL.md b/skills/mp-code-review/SKILL.md
-index 373a4f2..47391e4 100644
+index 83183e0..fd9f742 100644
 --- a/skills/mp-code-review/SKILL.md
 +++ b/skills/mp-code-review/SKILL.md
 @@ -1,8 +1,19 @@
@@ -68,7 +68,7 @@ index 373a4f2..47391e4 100644
  - **Standards**: does the code conform to this repo's documented coding standards?
 @@ -10,8 +21,6 @@ Two-axis review of the diff between `HEAD` and a fixed point the user supplies:
  
- Both axes run as **parallel sub-agents** so they don't pollute each other's context, then this skill aggregates their findings.
+ Both axes run as **parallel sub-agents** so they don't pollute each other's context, then this skill aggregates their findings. Start every sub-agent with a fresh context window.
  
 -The issue tracker should have been provided to you. If not, tell the user to run `/setup-matt-pocock-skills`.
 -
