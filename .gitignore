@@ -9,3 +9,6 @@ __pycache__/
 
 # local guardrail security-tooling state (per-machine egress grants)
 guardrail.toml
+
+# Git worktrees created for isolated plan work
+.worktrees/
