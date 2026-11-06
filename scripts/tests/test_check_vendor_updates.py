@@ -1,6 +1,7 @@
 import contextlib
 import io
 from pathlib import Path
+import re
 import tempfile
 import unittest
 from unittest import mock
@@ -33,6 +34,41 @@ class VendorUpdateTests(unittest.TestCase):
             encoding="utf-8",
         )
         return path
+
+    def tree_fetch(self, pinned_sha, current_sha):
+        pinned_root = "d" * 40
+        current_root = "e" * 40
+        pinned_skills = "f" * 40
+        current_skills = "0" * 40
+        responses = {
+            "https://api.github.com/repos/owner/repository": {
+                "default_branch": "main"
+            },
+            f"https://api.github.com/repos/owner/repository/commits/{VALID_COMMIT}": {
+                "commit": {"tree": {"sha": pinned_root}}
+            },
+            "https://api.github.com/repos/owner/repository/commits/main": {
+                "commit": {"tree": {"sha": current_root}}
+            },
+            f"https://api.github.com/repos/owner/repository/git/trees/{pinned_root}": {
+                "tree": [{"path": "skills", "type": "tree", "sha": pinned_skills}]
+            },
+            f"https://api.github.com/repos/owner/repository/git/trees/{pinned_skills}": {
+                "tree": [{"path": "example", "type": "tree", "sha": pinned_sha}]
+            },
+            f"https://api.github.com/repos/owner/repository/git/trees/{current_root}": {
+                "tree": [{"path": "skills", "type": "tree", "sha": current_skills}]
+            },
+            f"https://api.github.com/repos/owner/repository/git/trees/{current_skills}": {
+                "tree": [{"path": "example", "type": "tree", "sha": current_sha}]
+            },
+        }
+
+        def fetch(url, token):
+            self.assertEqual(token, "token")
+            return responses[url]
+
+        return fetch
 
     def test_parse_upstream_accepts_literal_fields(self):
         upstream = check_vendor_updates.parse_upstream(self.write_upstream())
@@ -77,14 +113,11 @@ class VendorUpdateTests(unittest.TestCase):
     def test_equal_subtree_sha_is_unchanged_even_when_default_branch_advanced(self):
         self.write_upstream()
 
-        def fetch(url, token):
-            self.assertEqual(token, "token")
-            if url == "https://api.github.com/repos/owner/repository":
-                return {"default_branch": "main"}
-            return {"sha": PINNED_TREE}
-
         result = check_vendor_updates.check_vendor(
-            "example", self.vendor_root, "token", fetch=fetch
+            "example",
+            self.vendor_root,
+            "token",
+            fetch=self.tree_fetch(PINNED_TREE, PINNED_TREE),
         )
 
         self.assertEqual(result.default_branch, "main")
@@ -94,14 +127,24 @@ class VendorUpdateTests(unittest.TestCase):
     def test_different_subtree_sha_is_stale(self):
         self.write_upstream()
 
+        result = check_vendor_updates.check_vendor(
+            "example",
+            self.vendor_root,
+            "token",
+            fetch=self.tree_fetch(PINNED_TREE, CURRENT_TREE),
+        )
+
+        self.assertEqual(result.pinned_sha, PINNED_TREE)
+        self.assertEqual(result.current_sha, CURRENT_TREE)
+
+    def test_directory_sha_comes_from_segment_by_segment_tree_traversal(self):
+        self.write_upstream()
+        tree_fetch = self.tree_fetch(PINNED_TREE, CURRENT_TREE)
+
         def fetch(url, token):
-            if url == "https://api.github.com/repos/owner/repository":
-                return {"default_branch": "main"}
-            if f"ref={VALID_COMMIT}" in url:
-                return {"sha": PINNED_TREE}
-            if "ref=main" in url:
-                return {"sha": CURRENT_TREE}
-            self.fail(f"unexpected URL: {url}")
+            if "/contents/" in url:
+                self.fail("directory Contents API responses are arrays, not tree objects")
+            return tree_fetch(url, token)
 
         result = check_vendor_updates.check_vendor(
             "example", self.vendor_root, "token", fetch=fetch
@@ -158,6 +201,29 @@ class VendorUpdateTests(unittest.TestCase):
         self.assertEqual(status, 1)
         self.assertIn("example", stdout.getvalue())
         self.assertIn("STALE", stdout.getvalue())
+
+
+class VendorUpdateWorkflowTests(unittest.TestCase):
+    def test_workflow_is_monthly_manual_and_read_only(self):
+        workflow = (
+            Path(__file__).resolve().parents[2]
+            / ".github"
+            / "workflows"
+            / "vendor-upstream-check.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertRegex(
+            workflow,
+            r"(?ms)^on:\n  schedule:\n    - cron: ['\"]17 9 1 \* \*['\"]\n"
+            r"  workflow_dispatch:\s*\npermissions:\n  contents: read\n",
+        )
+        for forbidden in ("pull_request:", "push:", "issues:", "pull-requests:", "write"):
+            self.assertNotIn(forbidden, workflow)
+        self.assertEqual(workflow.count("runs-on:"), 1)
+        self.assertIn("check:\n    runs-on: ubuntu-latest", workflow)
+        self.assertRegex(workflow, r"actions/checkout@[0-9a-f]{40} # v7")
+        self.assertIn("run: python3 scripts/check_vendor_updates.py", workflow)
+        self.assertIn("GH_TOKEN: ${{ github.token }}", workflow)
 
 
 if __name__ == "__main__":

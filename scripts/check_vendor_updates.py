@@ -98,6 +98,41 @@ def _required_string(payload: dict, field: str, url: str) -> str:
     return value
 
 
+def _commit_tree_sha(payload: dict, url: str) -> str:
+    commit = payload.get("commit")
+    tree = commit.get("tree") if isinstance(commit, dict) else None
+    if not isinstance(tree, dict):
+        raise CheckerError(f"GitHub API response for {url} lacks commit.tree")
+    return _required_string(tree, "sha", url)
+
+
+def _path_tree_sha(
+    repo_url: str,
+    ref: str,
+    path: str,
+    token: str,
+    fetch,
+) -> str:
+    commit_url = f"{repo_url}/commits/{parse.quote(ref, safe='')}"
+    tree_sha = _commit_tree_sha(fetch(commit_url, token), commit_url)
+
+    for segment in path.split("/"):
+        tree_url = f"{repo_url}/git/trees/{tree_sha}"
+        payload = fetch(tree_url, token)
+        entries = payload.get("tree")
+        if not isinstance(entries, list):
+            raise CheckerError(f"GitHub API response for {tree_url} lacks a tree list")
+        matches = [
+            entry
+            for entry in entries
+            if isinstance(entry, dict) and entry.get("path") == segment
+        ]
+        if len(matches) != 1 or matches[0].get("type") != "tree":
+            raise CheckerError(f"{path!r} is not a directory at {ref}")
+        tree_sha = _required_string(matches[0], "sha", tree_url)
+    return tree_sha
+
+
 def check_vendor(
     name: str,
     vendor_root: Path,
@@ -111,17 +146,14 @@ def check_vendor(
         fetch(repo_url, token), "default_branch", repo_url
     )
 
-    path_component = parse.quote(upstream.path, safe="/")
-
-    def content_sha(ref: str) -> str:
-        query = parse.urlencode({"ref": ref})
-        url = f"{repo_url}/contents/{path_component}?{query}"
-        return _required_string(fetch(url, token), "sha", url)
-
     return CheckResult(
         name=name,
-        pinned_sha=content_sha(upstream.commit),
-        current_sha=content_sha(default_branch),
+        pinned_sha=_path_tree_sha(
+            repo_url, upstream.commit, upstream.path, token, fetch
+        ),
+        current_sha=_path_tree_sha(
+            repo_url, default_branch, upstream.path, token, fetch
+        ),
         default_branch=default_branch,
     )
 
