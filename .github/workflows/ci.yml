@@ -21,6 +21,8 @@ jobs:
             grep -q '^name: ' "$f" && grep -q '^description: ' "$f" || { echo "FAIL: $f"; exit 1; }
           done
           echo PASS
+      - name: vendored upstream checker regression tests
+        run: python3 -m unittest discover -s scripts/tests -p 'test_check_vendor_updates.py' -v
       - name: install skill-creator dependencies
         run: pip install -r skills/skill-creator/requirements.txt
       - name: install repo-policy dependencies
