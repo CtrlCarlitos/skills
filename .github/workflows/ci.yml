@@ -7,7 +7,7 @@ jobs:
   vendor-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: skill-creator equals upstream pin + patches
         run: bash scripts/sync-vendor.sh skill-creator --check
       - name: show-me equals upstream pin + patches
@@ -62,7 +62,7 @@ jobs:
   skill-creator-tests-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Runs before any test/build step: unittest's __pycache__ output would
       # otherwise show up as "new files" against the pristine rebuild below,
       # a false drift report unrelated to the mode-bit flakiness this step
@@ -84,7 +84,7 @@ jobs:
       - name: mp-code-review equals upstream pin + patches
         shell: bash
         run: bash scripts/sync-vendor.sh mp-code-review --check
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.x"
       - name: install skill-creator dependencies
@@ -127,7 +127,7 @@ jobs:
   skill-creator-tests-macos:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Runs before any test/build step, same reason as the Windows job
       # above: unittest's __pycache__ output would otherwise show up as
       # "new files" against the pristine rebuild, a false drift report.
@@ -143,7 +143,7 @@ jobs:
         run: bash scripts/sync-vendor.sh show-me --check
       - name: mp-code-review equals upstream pin + patches
         run: bash scripts/sync-vendor.sh mp-code-review --check
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.x"
       - name: install skill-creator dependencies
