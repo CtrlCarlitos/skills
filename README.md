@@ -3,7 +3,7 @@
 Agent skills by CtrlCarlitos, installable with the [`skills`](https://skills.sh) CLI:
 
 ```sh
-npx skills add CtrlCarlitos/skills -s code-search skill-creator show-me repo-policy release-notes update-docs mp-code-review deliver git-editor-config -a claude-code opencode codex antigravity -g -y --copy
+npx skills add CtrlCarlitos/skills -s code-search skill-creator show-me repo-policy release-notes update-docs mp-code-review deliver git-editor-config study-coach -a claude-code opencode codex antigravity -g -y --copy
 ```
 
 | Skill | What it does |
