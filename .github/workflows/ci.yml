@@ -14,13 +14,12 @@ jobs:
         run: bash scripts/sync-vendor.sh show-me --check
       - name: mp-code-review equals upstream pin + patches
         run: bash scripts/sync-vendor.sh mp-code-review --check
-      - name: every SKILL.md has name and description
-        run: |
-          set -e
-          for f in skills/*/SKILL.md; do
-            grep -q '^name: ' "$f" && grep -q '^description: ' "$f" || { echo "FAIL: $f"; exit 1; }
-          done
-          echo PASS
+      - name: install frontmatter checker dependency
+        run: pip install pyyaml
+      - name: every SKILL.md frontmatter parses (name + description)
+        run: python3 scripts/check_frontmatter.py
+      - name: frontmatter checker regression tests
+        run: python3 -m unittest discover -s scripts/tests -p 'test_check_frontmatter.py' -v
       - name: vendored upstream checker regression tests
         run: python3 -m unittest discover -s scripts/tests -p 'test_check_vendor_updates.py' -v
       - name: install skill-creator dependencies
