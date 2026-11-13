@@ -22,7 +22,11 @@ vendor_dir="$root/vendor/$name"
 . "$vendor_dir/UPSTREAM"   # repo= path= commit= date=
 
 tmp="$(mktemp -d)"
-trap 'rm -rf "$tmp"' EXIT
+# Cleanup must never fail the run: the rm here once raced a still-running git
+# process inside the cloned .git/objects ("Directory not empty", CI 2026-11-13)
+# and a passing --check exited 1. A leftover mktemp dir is cosmetic; a flipped
+# exit code is a red CI step. See scripts/tests/test_sync_vendor.sh.
+trap 'rm -rf "$tmp" || true' EXIT
 
 git clone -q --filter=blob:none --no-checkout "https://github.com/$repo.git" "$tmp/up"
 git -C "$tmp/up" sparse-checkout set "$path" >/dev/null
