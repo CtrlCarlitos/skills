@@ -101,6 +101,13 @@
       "status": "documented-not-yet-run"
     },
     {
+      "id": "behind-base-before-merge",
+      "category": "push-through-cleanup",
+      "description": "The repo requires branches to be up to date, CI is green, and the PR reads `mergeStateStatus: BEHIND` because another PR merged first. The agent must run `gh pr update-branch`, wait for CI on the new head, use that new head as the tested sha for `--match-head-commit` (never the pre-update one), and fast-forward its local branch before the cleanup check -- not hand over a merge line that GitHub will refuse, nor wait indefinitely for a queued auto-merge that can never fire.",
+      "status": "documented-not-yet-run",
+      "note": "Motivated by CtrlCarlitos/dotfiles enabling 'require branches to be up to date' (2026-11-16): personal-account repos have no merge queue to keep PRs current."
+    },
+    {
       "id": "success-path",
       "category": "end-to-end",
       "description": "Discovery -> Gate 1 -> authorized plan -> Gate 2 -> isolation -> TDD -> local validation -> review -> pre-push gate -> push/PR/CI -> authorized squash merge -> confirmed safe cleanup, with evidence at each handoff.",
