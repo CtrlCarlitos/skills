@@ -35,6 +35,18 @@ class ApplyNotApplicableOverridesTests(unittest.TestCase):
             self.assertEqual(new_current["dependabot"], False)
             self.assertEqual(new_policy["dependabot"], True)
 
+    def test_a_dependabot_config_that_exists_is_never_reported_as_na(self):
+        """If a maintainer configured Dependabot, it applies by definition:
+        reporting it N/A hid the real state of CtrlCarlitos/skills."""
+        with tempfile.TemporaryDirectory() as root:
+            current = {"dependabot": True}
+            policy = {"dependabot": True}
+
+            new_current, new_policy = apply_not_applicable_overrides(current, policy, Path(root))
+
+            self.assertEqual(new_current["dependabot"], True)
+            self.assertEqual(new_policy["dependabot"], True)
+
     def test_agents_md_becomes_na_on_both_sides_when_repo_is_not_agentic(self):
         with tempfile.TemporaryDirectory() as root:
             current = {"agents_md": False}

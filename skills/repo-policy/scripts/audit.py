@@ -70,7 +70,8 @@ def apply_not_applicable_overrides(current: dict, policy: dict, repo_root: Path)
     """
     current = dict(current)
     policy = dict(policy)
-    if "dependabot" in policy and not has_a_dependency_manifest(repo_root):
+    # A Dependabot config that exists applies by definition: never hide it as N/A.
+    if "dependabot" in policy and current.get("dependabot") is not True and not has_a_dependency_manifest(repo_root):
         current["dependabot"] = "N/A"
         policy["dependabot"] = "N/A"
     if "agents_md" in policy and not looks_agentic(repo_root):

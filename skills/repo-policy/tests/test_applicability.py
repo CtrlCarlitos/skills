@@ -29,6 +29,41 @@ class HasADependencyManifestTests(unittest.TestCase):
 
                 self.assertTrue(has_a_dependency_manifest(Path(root)), f"should detect {manifest}")
 
+    def test_finds_a_manifest_in_a_subdirectory(self):
+        """CtrlCarlitos/skills keeps its requirements.txt files per skill
+        (skills/<name>/requirements.txt), none at the root."""
+        with tempfile.TemporaryDirectory() as root:
+            (Path(root) / "skills" / "deliver").mkdir(parents=True)
+            (Path(root) / "skills" / "deliver" / "requirements.txt").write_text("", encoding="utf-8")
+
+            self.assertTrue(has_a_dependency_manifest(Path(root)))
+
+    def test_github_actions_workflows_count(self):
+        """Dependabot updates the actions a workflow uses (its
+        github-actions ecosystem), so a repo with workflows has something
+        for it to do even with no package manifest."""
+        with tempfile.TemporaryDirectory() as root:
+            (Path(root) / ".github" / "workflows").mkdir(parents=True)
+            (Path(root) / ".github" / "workflows" / "ci.yml").write_text("on: push\n", encoding="utf-8")
+
+            self.assertTrue(has_a_dependency_manifest(Path(root)))
+
+    def test_ignores_manifests_in_tool_and_dependency_directories(self):
+        """Copies under node_modules/, a virtualenv, .git/, or Claude Code's
+        own .claude/worktrees/ are not the repo's dependencies."""
+        for parts in (
+            ("node_modules", "left-pad", "package.json"),
+            (".venv", "lib", "pyproject.toml"),
+            (".claude", "worktrees", "wt1", "package.json"),
+            (".git", "modules", "x", "go.mod"),
+        ):
+            with tempfile.TemporaryDirectory() as root:
+                path = Path(root).joinpath(*parts)
+                path.parent.mkdir(parents=True)
+                path.write_text("", encoding="utf-8")
+
+                self.assertFalse(has_a_dependency_manifest(Path(root)), f"should ignore {'/'.join(parts)}")
+
 
 class LooksAgenticTests(unittest.TestCase):
     def test_true_when_claude_md_exists(self):

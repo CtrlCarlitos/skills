@@ -15,6 +15,11 @@ class Setting:
     format: Callable[[Any], str] = field(default=str)
 
 
+def _is_count(value) -> bool:
+    # bool is an int subclass; an on/off setting is not a count.
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
 def build_matrix(
     current: dict,
     target: dict,
@@ -43,8 +48,14 @@ def build_matrix(
 
         if current_value == target_value:
             action = "None"
+        elif target_value is False and current_value is True:
+            # A policy's false on an on/off setting means "not required", never
+            # "turn it off": the skill does not propose removing a protection.
+            action = "None (exceeds policy)"
         elif reason:
             action = "Exception"
+        elif _is_count(current_value) and _is_count(target_value):
+            action = "Raise count" if target_value > current_value else "Lower count"
         else:
             action = setting.action_when_mismatched
 

@@ -73,6 +73,35 @@ class BuildMatrixTests(unittest.TestCase):
         self.assertEqual(rows[0]["current"], "None")
         self.assertEqual(rows[0]["action"], "Create")
 
+    def test_a_protection_the_policy_does_not_require_is_never_proposed_for_removal(self):
+        """A policy's `false` on an on/off setting means "not required", not
+        "turn it off": CtrlCarlitos/dotfiles signs commits and the default
+        policy's `required_signatures: false` showed "Enable" -- applying it
+        would have removed the protection."""
+        settings = [Setting(key="required_signatures", label="Signed commits", action_when_mismatched="Enable")]
+
+        rows = build_matrix({"required_signatures": True}, {"required_signatures": False}, settings)
+
+        self.assertEqual(rows[0]["action"], "None (exceeds policy)")
+
+    def test_a_required_protection_that_is_missing_is_still_a_gap(self):
+        settings = [Setting(key="required_signatures", label="Signed commits", action_when_mismatched="Enable")]
+
+        rows = build_matrix({"required_signatures": False}, {"required_signatures": True}, settings)
+
+        self.assertEqual(rows[0]["action"], "Enable")
+
+    def test_a_count_mismatch_says_which_way_to_move(self):
+        """Lowering approvals is a real change worth proposing (the
+        single-maintainer trap), so a count says raise or lower."""
+        settings = [Setting(key="required_approving_review_count", label="Required approvals", action_when_mismatched="Set count")]
+
+        lower = build_matrix({"required_approving_review_count": 1}, {"required_approving_review_count": 0}, settings)
+        raise_ = build_matrix({"required_approving_review_count": 0}, {"required_approving_review_count": 2}, settings)
+
+        self.assertEqual(lower[0]["action"], "Lower count")
+        self.assertEqual(raise_[0]["action"], "Raise count")
+
     def test_a_setting_the_policy_omits_is_not_audited(self):
         """default-policy.yaml: "every key here is optional; omit what you
         don't want audited." An omitted key must not become a row whose
