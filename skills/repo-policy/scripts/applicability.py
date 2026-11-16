@@ -18,8 +18,25 @@ DEPENDENCY_MANIFESTS = (
 )
 
 
+# Copies of other projects' manifests, not this repo's dependencies. A
+# manifest under one of these is skipped.
+IGNORED_DIRS = {".git", "node_modules", ".venv", "venv", "__pycache__", ".claude", ".tox", "dist", "build"}
+
+
 def has_a_dependency_manifest(repo_root: Path) -> bool:
-    return any((repo_root / name).exists() for name in DEPENDENCY_MANIFESTS)
+    """True when Dependabot has something to update here: a recognized
+    manifest anywhere in the repo (CtrlCarlitos/skills keeps its
+    requirements.txt per skill, none at the root), or GitHub Actions
+    workflows (its github-actions ecosystem).
+    """
+    workflows = repo_root / ".github" / "workflows"
+    if workflows.is_dir() and any(workflows.iterdir()):
+        return True
+    for name in DEPENDENCY_MANIFESTS:
+        for path in repo_root.rglob(name):
+            if not IGNORED_DIRS.intersection(path.relative_to(repo_root).parts[:-1]):
+                return True
+    return False
 
 
 # Deliberately-authored markers only -- NOT bare ".claude" or ".cursor"
