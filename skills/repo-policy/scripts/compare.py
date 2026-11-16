@@ -33,6 +33,10 @@ def build_matrix(
     exceptions = exceptions or {}
     rows = []
     for setting in settings:
+        # A policy audits only the keys it states ("omit what you don't want
+        # audited"); an omitted key is not a gap with a target of None (#42).
+        if setting.key not in target:
+            continue
         current_value = current.get(setting.key)
         target_value = target.get(setting.key)
         reason = exceptions.get(setting.key)

@@ -73,6 +73,21 @@ class BuildMatrixTests(unittest.TestCase):
         self.assertEqual(rows[0]["current"], "None")
         self.assertEqual(rows[0]["action"], "Create")
 
+    def test_a_setting_the_policy_omits_is_not_audited(self):
+        """default-policy.yaml: "every key here is optional; omit what you
+        don't want audited." An omitted key must not become a row whose
+        target is None and whose action asks to change the repo (#42)."""
+        settings = [
+            Setting(key="default_branch", label="Default branch", action_when_mismatched="Rename"),
+            Setting(key="allow_auto_merge", label="Auto-merge allowed", action_when_mismatched="Enable"),
+        ]
+        current = {"default_branch": "main", "allow_auto_merge": False}
+        target = {"default_branch": "main"}
+
+        rows = build_matrix(current, target, settings)
+
+        self.assertEqual([r["label"] for r in rows], ["Default branch"])
+
 
 if __name__ == "__main__":
     unittest.main()

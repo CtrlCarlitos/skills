@@ -12,7 +12,13 @@ import yaml
 
 from scripts.applicability import has_a_dependency_manifest, looks_agentic
 from scripts.compare import build_matrix
-from scripts.inspect import inspect_branch_rules, inspect_files, inspect_repo_settings, inspect_tag_protection
+from scripts.inspect import (
+    inspect_branch_rules,
+    inspect_bypass_actors,
+    inspect_files,
+    inspect_repo_settings,
+    inspect_tag_protection,
+)
 from scripts.policy import load_policy
 from scripts.report import render_markdown
 from scripts.settings import SETTINGS
@@ -41,10 +47,15 @@ def gather_current_state(
     inspect_branch_rules_fn=inspect_branch_rules,
     inspect_tag_protection_fn=inspect_tag_protection,
     inspect_files_fn=inspect_files,
+    inspect_bypass_actors_fn=inspect_bypass_actors,
 ) -> dict:
     current: dict = {}
     current.update(inspect_repo_settings_fn(owner, repo))
     current.update(inspect_branch_rules_fn(owner, repo, current["default_branch"]))
+    current.update(inspect_bypass_actors_fn(current.pop("ruleset_refs", [])))
+    # "Any required CI": a repo with no required check at all is a gap
+    # whatever the policy names its checks (#42).
+    current["require_status_checks"] = bool(current.get("required_status_checks"))
     current.update(inspect_tag_protection_fn(owner, repo))
     current.update(inspect_files_fn(repo_root, file_candidates))
     return current
@@ -65,6 +76,10 @@ def apply_not_applicable_overrides(current: dict, policy: dict, repo_root: Path)
     if "agents_md" in policy and not looks_agentic(repo_root):
         current["agents_md"] = "N/A"
         policy["agents_md"] = "N/A"
+    # An empty check-name list means "don't audit the names" (writing-a-policy.md);
+    # require_status_checks still flags a branch with no required check at all.
+    if policy.get("required_status_checks") == []:
+        del policy["required_status_checks"]
     return current, policy
 
 
@@ -90,6 +105,10 @@ def main(argv=None) -> int:
 
     print(f"Policy source: {source}\n")
     print(render_markdown(rows))
+    if current.get("bypass_actors"):
+        print("\nRuleset bypass actors (each can skip the rules on the default branch):")
+        for actor in current["bypass_actors"]:
+            print(f"- {actor}")
     return 0
 
 

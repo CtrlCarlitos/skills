@@ -63,6 +63,32 @@ class BuildBranchRulesetBodyTests(unittest.TestCase):
 
         self.assertEqual(body["conditions"]["ref_name"]["include"], ["~DEFAULT_BRANCH"])
 
+    def test_up_to_date_before_merge_follows_the_policy_and_defaults_on(self):
+        def strict(policy):
+            body = build_branch_ruleset_body({"required_status_checks": ["build"], **policy})
+            rule = next(r for r in body["rules"] if r["type"] == "required_status_checks")
+            return rule["parameters"]["strict_required_status_checks_policy"]
+
+        self.assertTrue(strict({}))
+        self.assertTrue(strict({"strict_required_status_checks": True}))
+        self.assertFalse(strict({"strict_required_status_checks": False}))
+
+    def test_the_bypass_list_is_always_sent_empty(self):
+        """#42: nobody -- an agent using the maintainer's token included --
+        may skip the rules a policy asks for."""
+        self.assertEqual(build_branch_ruleset_body({})["bypass_actors"], [])
+
+    def test_allowed_merge_methods_follow_the_merge_strategy(self):
+        def methods(policy):
+            body = build_branch_ruleset_body({"require_pull_request": True, **policy})
+            return next(r for r in body["rules"] if r["type"] == "pull_request")["parameters"]["allowed_merge_methods"]
+
+        self.assertEqual(methods({"merge_strategy": "squash_only"}), ["squash"])
+        self.assertEqual(methods({"merge_strategy": "merge_only"}), ["merge"])
+        self.assertEqual(methods({"merge_strategy": "rebase_only"}), ["rebase"])
+        self.assertEqual(methods({"merge_strategy": "any"}), ["merge", "squash", "rebase"])
+        self.assertEqual(methods({}), ["merge", "squash", "rebase"])
+
 
 class ApplyRepoSettingsTests(unittest.TestCase):
     def test_sends_a_patch_with_only_the_requested_changes(self):
@@ -93,6 +119,16 @@ class ApplyRepoSettingsTests(unittest.TestCase):
         self.assertEqual(body["allow_merge_commit"], False)
         self.assertEqual(body["allow_rebase_merge"], False)
 
+    def test_auto_merge_can_be_approved_on_its_own(self):
+        calls = []
+
+        def fake_run(cmd, **kwargs):
+            calls.append(kwargs.get("input"))
+
+        apply_repo_settings("acme", "widgets", {"allow_auto_merge": True}, run=fake_run)
+
+        self.assertEqual(json.loads(calls[0]), {"allow_auto_merge": True})
+
     def test_no_requested_changes_makes_no_call_at_all(self):
         calls = []
 
@@ -118,6 +154,20 @@ class ApplyBranchRulesetTests(unittest.TestCase):
         self.assertEqual(cmd[:4], ["gh", "api", "-X", "POST"])
         self.assertIn("repos/acme/widgets/rulesets", cmd)
         self.assertEqual(json.loads(sent_body), body)
+
+    def test_updates_an_existing_ruleset_in_place_when_given_its_id(self):
+        """#42: a repo that already protects its branch (CtrlCarlitos/dotfiles'
+        "main branch protection") must not gain a second, overlapping ruleset."""
+        calls = []
+
+        def fake_run(cmd, **kwargs):
+            calls.append(cmd)
+
+        body = {"name": "x", "target": "branch", "enforcement": "active", "conditions": {}, "rules": []}
+        apply_branch_ruleset("acme", "widgets", body, ruleset_id=7, run=fake_run)
+
+        self.assertEqual(calls[0][:4], ["gh", "api", "-X", "PUT"])
+        self.assertIn("repos/acme/widgets/rulesets/7", calls[0])
 
 
 if __name__ == "__main__":
