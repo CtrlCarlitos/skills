@@ -46,6 +46,21 @@ class SettingsRegistryTests(unittest.TestCase):
         missing = expected_labels - actual_labels
         self.assertEqual(missing, set(), f"SETTINGS is missing: {missing}")
 
+    def test_covers_what_safe_autonomous_merging_depends_on(self):
+        """#42: each of these decides whether an agent can merge without a
+        person, or whether anyone can skip the checks. A policy key that is
+        read but has no row (the approval count was one) is applied silently
+        and never reported."""
+        expected_keys = {
+            "required_approving_review_count", "require_code_owner_review",
+            "require_status_checks", "strict_required_status_checks",
+            "allow_auto_merge", "no_bypass_actors",
+        }
+        actual_keys = {s.key for s in SETTINGS}
+
+        missing = expected_keys - actual_keys
+        self.assertEqual(missing, set(), f"SETTINGS is missing: {missing}")
+
 
 class PresenceFormatTests(unittest.TestCase):
     def test_na_sentinel_is_not_mistaken_for_presence(self):

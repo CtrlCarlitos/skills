@@ -11,7 +11,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.inspect import inspect_branch_rules, inspect_files, inspect_repo_settings, inspect_tag_protection
+from scripts.inspect import (
+    inspect_branch_rules,
+    inspect_bypass_actors,
+    inspect_files,
+    inspect_repo_settings,
+    inspect_tag_protection,
+)
 
 
 class _FakeCompletedProcess:
@@ -53,6 +59,17 @@ class InspectRepoSettingsTests(unittest.TestCase):
         self.assertEqual(result["default_branch"], "main")
         self.assertEqual(result["merge_strategy"], "squash_only")
         self.assertTrue(result["delete_branch_on_merge"])
+
+    def test_reads_whether_auto_merge_is_allowed(self):
+        def fake_run(cmd, **kwargs):
+            return _FakeCompletedProcess(json.dumps({"default_branch": "main", "allow_auto_merge": True}))
+
+        self.assertTrue(inspect_repo_settings("acme", "widgets", run=fake_run)["allow_auto_merge"])
+
+        def fake_run_absent(cmd, **kwargs):
+            return _FakeCompletedProcess(json.dumps({"default_branch": "main"}))
+
+        self.assertFalse(inspect_repo_settings("acme", "widgets", run=fake_run_absent)["allow_auto_merge"])
 
 
 class InspectBranchRulesTests(unittest.TestCase):
@@ -101,6 +118,76 @@ class InspectBranchRulesTests(unittest.TestCase):
         self.assertFalse(result["block_force_push"])
         self.assertFalse(result["block_branch_deletion"])
         self.assertEqual(result["required_status_checks"], [])
+        self.assertFalse(result["strict_required_status_checks"])
+        self.assertEqual(result["ruleset_refs"], [])
+
+    def test_reads_up_to_date_and_which_rulesets_the_rules_come_from(self):
+        # Shape confirmed live via `gh api repos/CtrlCarlitos/dotfiles/rules/branches/main` (2026-11-16).
+        source = {"ruleset_source_type": "Repository", "ruleset_source": "acme/widgets", "ruleset_id": 7}
+        fixture = [
+            {"type": "deletion", **source},
+            {
+                "type": "required_status_checks",
+                "parameters": {
+                    "required_status_checks": [{"context": "build"}],
+                    "strict_required_status_checks_policy": True,
+                },
+                **source,
+            },
+            {"type": "non_fast_forward", "ruleset_source_type": "Organization", "ruleset_source": "acme", "ruleset_id": 9},
+        ]
+
+        def fake_run(cmd, **kwargs):
+            return _FakeCompletedProcess(json.dumps(fixture))
+
+        result = inspect_branch_rules("acme", "widgets", "main", run=fake_run)
+
+        self.assertTrue(result["strict_required_status_checks"])
+        self.assertEqual(result["ruleset_refs"], [
+            {"source_type": "Repository", "source": "acme/widgets", "id": 7},
+            {"source_type": "Organization", "source": "acme", "id": 9},
+        ])
+
+
+class InspectBypassActorsTests(unittest.TestCase):
+    def test_no_rulesets_means_nothing_to_bypass(self):
+        def fake_run(cmd, **kwargs):
+            raise AssertionError("no ruleset means no API call")
+
+        self.assertEqual(inspect_bypass_actors([], run=fake_run), {"no_bypass_actors": True, "bypass_actors": []})
+
+    def test_reads_each_ruleset_from_its_own_endpoint(self):
+        # Shape confirmed live via `gh api repos/CtrlCarlitos/dotfiles/rulesets/23142280` (2026-11-16).
+        calls = []
+        by_path = {
+            "repos/acme/widgets/rulesets/7": {"id": 7, "bypass_actors": []},
+            "orgs/acme/rulesets/9": {
+                "id": 9,
+                "bypass_actors": [{"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"}],
+            },
+        }
+
+        def fake_run(cmd, **kwargs):
+            calls.append(cmd[-1])
+            return _FakeCompletedProcess(json.dumps(by_path[cmd[-1]]))
+
+        refs = [
+            {"source_type": "Repository", "source": "acme/widgets", "id": 7},
+            {"source_type": "Organization", "source": "acme", "id": 9},
+        ]
+        result = inspect_bypass_actors(refs, run=fake_run)
+
+        self.assertEqual(calls, ["repos/acme/widgets/rulesets/7", "orgs/acme/rulesets/9"])
+        self.assertFalse(result["no_bypass_actors"])
+        self.assertEqual(result["bypass_actors"], ["RepositoryRole 5 (always) in ruleset 9"])
+
+    def test_empty_bypass_lists_everywhere_mean_no_bypass(self):
+        def fake_run(cmd, **kwargs):
+            return _FakeCompletedProcess(json.dumps({"id": 7, "bypass_actors": []}))
+
+        result = inspect_bypass_actors([{"source_type": "Repository", "source": "acme/widgets", "id": 7}], run=fake_run)
+
+        self.assertTrue(result["no_bypass_actors"])
 
 
 class InspectTagProtectionTests(unittest.TestCase):

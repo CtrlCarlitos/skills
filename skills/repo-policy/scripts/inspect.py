@@ -22,6 +22,7 @@ def inspect_repo_settings(owner: str, repo: str, run=subprocess.run) -> dict:
         "default_branch": data.get("default_branch"),
         "merge_strategy": merge_strategy_from_flags(data),
         "delete_branch_on_merge": bool(data.get("delete_branch_on_merge")),
+        "allow_auto_merge": bool(data.get("allow_auto_merge")),
     }
 
 
@@ -36,7 +37,20 @@ def inspect_branch_rules(owner: str, repo: str, branch: str, run=subprocess.run)
     pr_params = by_type.get("pull_request", {}).get("parameters", {})
     status_checks_params = by_type.get("required_status_checks", {}).get("parameters", {})
 
+    # The rulesets these effective rules come from, in first-seen order, for
+    # inspect_bypass_actors: the effective-rules endpoint doesn't carry the
+    # bypass list itself.
+    ruleset_refs = []
+    for rule in rules:
+        if "ruleset_id" not in rule:
+            continue
+        ref = {"source_type": rule.get("ruleset_source_type"), "source": rule.get("ruleset_source"), "id": rule["ruleset_id"]}
+        if ref not in ruleset_refs:
+            ruleset_refs.append(ref)
+
     return {
+        "strict_required_status_checks": bool(status_checks_params.get("strict_required_status_checks_policy")),
+        "ruleset_refs": ruleset_refs,
         "require_pull_request": "pull_request" in by_type,
         "required_approving_review_count": pr_params.get("required_approving_review_count", 0),
         "require_code_owner_review": bool(pr_params.get("require_code_owner_review")),
@@ -47,6 +61,25 @@ def inspect_branch_rules(owner: str, repo: str, branch: str, run=subprocess.run)
         "block_branch_deletion": "deletion" in by_type,
         "required_status_checks": [c["context"] for c in status_checks_params.get("required_status_checks", [])],
     }
+
+
+def inspect_bypass_actors(ruleset_refs: list[dict], run=subprocess.run) -> dict:
+    """Who may skip the rules behind the default branch: each ruleset's own
+    bypass_actors, read from its repo- or org-level endpoint. No rulesets
+    means nothing to bypass (whether there are rules at all is other rows'
+    job).
+    """
+    actors = []
+    for ref in ruleset_refs:
+        if ref["source_type"] == "Organization":
+            path = f"orgs/{ref['source']}/rulesets/{ref['id']}"
+        else:
+            path = f"repos/{ref['source']}/rulesets/{ref['id']}"
+        for actor in _gh_api(path, run).get("bypass_actors") or []:
+            actors.append(
+                f"{actor.get('actor_type')} {actor.get('actor_id')} ({actor.get('bypass_mode')}) in ruleset {ref['id']}"
+            )
+    return {"no_bypass_actors": not actors, "bypass_actors": actors}
 
 
 def inspect_tag_protection(owner: str, repo: str, run=subprocess.run) -> dict:

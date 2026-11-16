@@ -7,6 +7,14 @@ in a PR is, so approval has to be itemized here instead.
 import json
 import subprocess
 
+# A ruleset's allowed_merge_methods for each policy merge_strategy; "any" and
+# an unset strategy allow all three, as before.
+_MERGE_METHODS = {
+    "squash_only": ["squash"],
+    "merge_only": ["merge"],
+    "rebase_only": ["rebase"],
+}
+
 
 def build_branch_ruleset_body(policy: dict, branch_pattern: str = "~DEFAULT_BRANCH") -> dict:
     """Pure: turns a target policy dict into the body for
@@ -23,7 +31,7 @@ def build_branch_ruleset_body(policy: dict, branch_pattern: str = "~DEFAULT_BRAN
                 "required_review_thread_resolution": bool(policy.get("required_review_thread_resolution")),
                 "dismiss_stale_reviews_on_push": False,
                 "require_last_push_approval": False,
-                "allowed_merge_methods": ["merge", "squash", "rebase"],
+                "allowed_merge_methods": _MERGE_METHODS.get(policy.get("merge_strategy"), ["merge", "squash", "rebase"]),
             },
         })
 
@@ -32,7 +40,7 @@ def build_branch_ruleset_body(policy: dict, branch_pattern: str = "~DEFAULT_BRAN
             "type": "required_status_checks",
             "parameters": {
                 "required_status_checks": [{"context": c} for c in policy["required_status_checks"]],
-                "strict_required_status_checks_policy": True,
+                "strict_required_status_checks_policy": bool(policy.get("strict_required_status_checks", True)),
             },
         })
 
@@ -50,18 +58,24 @@ def build_branch_ruleset_body(policy: dict, branch_pattern: str = "~DEFAULT_BRAN
         "target": "branch",
         "enforcement": "active",
         "conditions": {"ref_name": {"include": [branch_pattern], "exclude": []}},
+        # Explicitly nobody, so a PUT over an existing ruleset clears its list
+        # too: no one, an agent with the maintainer's token included, skips
+        # the rules (#42).
+        "bypass_actors": [],
         "rules": rules,
     }
 
 
 def apply_repo_settings(owner: str, repo: str, changes: dict, run=subprocess.run) -> None:
-    """changes: the subset of {merge_strategy, delete_branch_on_merge} the
-    user approved -- only those fields are sent. Making no call at all when
-    `changes` is empty is deliberate: this is never invoked as a catch-all.
+    """changes: the subset of {merge_strategy, delete_branch_on_merge,
+    allow_auto_merge} the user approved -- only those fields are sent. Making
+    no call at all when `changes` is empty is deliberate: this is never
+    invoked as a catch-all.
     """
     body = {}
-    if "delete_branch_on_merge" in changes:
-        body["delete_branch_on_merge"] = changes["delete_branch_on_merge"]
+    for key in ("delete_branch_on_merge", "allow_auto_merge"):
+        if key in changes:
+            body[key] = changes[key]
     if "merge_strategy" in changes:
         strategy = changes["merge_strategy"]
         body["allow_squash_merge"] = strategy in ("squash_only", "any")
@@ -80,9 +94,20 @@ def apply_repo_settings(owner: str, repo: str, changes: dict, run=subprocess.run
     )
 
 
-def apply_branch_ruleset(owner: str, repo: str, ruleset_body: dict, run=subprocess.run) -> None:
+def apply_branch_ruleset(
+    owner: str, repo: str, ruleset_body: dict, ruleset_id: int | None = None, run=subprocess.run
+) -> None:
+    """Creates a ruleset, or with `ruleset_id` replaces that existing one in
+    place (PUT replaces the whole ruleset: build the body from the existing
+    one plus the approved changes). A repo that already protects its branch
+    must not gain a second, overlapping ruleset (#42).
+    """
+    if ruleset_id is None:
+        method, path = "POST", f"repos/{owner}/{repo}/rulesets"
+    else:
+        method, path = "PUT", f"repos/{owner}/{repo}/rulesets/{ruleset_id}"
     run(
-        ["gh", "api", "-X", "POST", f"repos/{owner}/{repo}/rulesets", "--input", "-"],
+        ["gh", "api", "-X", method, path, "--input", "-"],
         input=json.dumps(ruleset_body),
         capture_output=True,
         text=True,

@@ -45,6 +45,19 @@ class ApplyNotApplicableOverridesTests(unittest.TestCase):
             self.assertEqual(new_current["agents_md"], "N/A")
             self.assertEqual(new_policy["agents_md"], "N/A")
 
+    def test_an_empty_check_name_list_is_not_audited(self):
+        """writing-a-policy.md: leave `required_status_checks` empty "to not
+        audit CI check names at all". `require_status_checks` still catches a
+        branch with no required check (#42)."""
+        with tempfile.TemporaryDirectory() as root:
+            current = {"required_status_checks": ["build"]}
+            policy = {"required_status_checks": [], "require_status_checks": True}
+
+            _, new_policy = apply_not_applicable_overrides(current, policy, Path(root))
+
+            self.assertNotIn("required_status_checks", new_policy)
+            self.assertTrue(new_policy["require_status_checks"])
+
     def test_does_not_mutate_the_original_dicts(self):
         with tempfile.TemporaryDirectory() as root:
             current = {"dependabot": False}

@@ -10,6 +10,11 @@ merge_strategy: squash_only   # one of: squash_only, merge_only, rebase_only, an
 delete_branch_on_merge: true
 
 require_pull_request: true
+# Approvals are counted from someone other than the PR's author. On a repo
+# with one maintainer whose PRs (agents' included) come from their own
+# account, any value above 0 means no PR can ever merge -- and with no bypass
+# actors, not even the admin's. Such a repo's policy sets 0 and lets
+# required checks gate the merge.
 required_approving_review_count: 1
 require_code_owner_review: false
 required_review_thread_resolution: true
@@ -18,9 +23,18 @@ required_linear_history: true
 block_force_push: true
 block_branch_deletion: true
 
+# At least one required check, whatever it is named: a branch nothing has to
+# pass is only gated by whoever merges.
+require_status_checks: true
 # Repo-specific: leave empty by default. A specific repo's own
 # .repo-policy/policy.yaml should list its actual required CI job names.
 required_status_checks: []
+# The PR's branch must contain the current base before it merges, so checks
+# never pass against a stale base.
+strict_required_status_checks: true
+# No ruleset bypass actors: nobody -- an agent with the maintainer's token
+# included -- can skip the rules above.
+no_bypass_actors: true
 
 release_tags_protected: true
 

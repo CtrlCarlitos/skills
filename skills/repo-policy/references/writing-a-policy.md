@@ -24,6 +24,30 @@ UI). Leave it empty to not audit CI check names at all — the built-in
 default does this because there's no universal set of check names; a
 repo's own `.repo-policy/policy.yaml` should list its actual ones.
 
+`require_status_checks: true` is the name-independent half: it flags a
+default branch with no required check at all, which the empty name list
+alone never would. `strict_required_status_checks` audits GitHub's
+"require branches to be up to date before merging".
+
+## Policies for agent-driven repos
+
+When coding agents open and merge PRs, the merge is safe only if GitHub,
+not the agent, decides it. These keys are what that depends on:
+
+- `require_status_checks: true` plus the repo's real
+  `required_status_checks`: something has to pass.
+- `strict_required_status_checks: true`: it has to pass against the
+  current base.
+- `no_bypass_actors: true`: nobody — an agent using the maintainer's token
+  included — can skip the rules. The audit lists any bypass actor it finds
+  under the matrix.
+- `allow_auto_merge: true`: an agent can queue `gh pr merge --auto` and
+  let GitHub merge once the checks pass.
+- `required_approving_review_count`: GitHub counts approvals only from
+  someone other than the PR's author. On a single-maintainer repo whose
+  PRs (agents' included) come from the maintainer's own account, any value
+  above 0 means no PR can ever merge; set 0 there and let the checks gate.
+
 ## Justified exceptions
 
 Add an `exceptions:` block mapping a setting key to the reason it doesn't

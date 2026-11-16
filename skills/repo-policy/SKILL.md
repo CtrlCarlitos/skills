@@ -23,6 +23,8 @@ A row's Current/Target can be `N/A` on both sides for a "required where applicab
 
 For each row where Action isn't `None` or `Exception: ...`, say in one line what applying it would actually do — e.g. "Add rule → create a branch ruleset requiring PRs, 1 approval, and resolved review threads on `main`." Ground this in the actual target policy values, not a generic description.
 
+Before proposing a **Required approvals** target above 0, check who could give those approvals: GitHub never counts the PR author's own. On a single-maintainer repo whose PRs come from the maintainer's account (agents' included), that rule would stop every merge, and with no bypass actors nobody could get past it. Say so, and propose 0 with required checks instead unless the user names other reviewers.
+
 ### 3. Get itemized approval
 
 Ask which specific rows to apply. **Never offer or accept "apply everything."** A branch-protection or repo-settings change goes straight through the GitHub API — it isn't a reviewable PR diff the way a file change is — so each one needs its own explicit go-ahead. If the user says "all of it," read back the specific rows and ask them to confirm by name; don't treat the blanket phrase alone as sufficient approval.
@@ -31,8 +33,11 @@ Ask which specific rows to apply. **Never offer or accept "apply everything."** 
 
 Three different mechanisms, by category — use the one that matches:
 
-- **Repo settings** (merge strategy, delete-branch-on-merge): `scripts/apply.py`'s `apply_repo_settings(owner, repo, {<only the approved keys>})`. PATCHes the repo directly; only send the keys that were actually approved.
-- **Branch protection, release-tag protection** (PR requirement, review threads, signed commits, linear history, force-push/deletion blocking, required status checks): build the ruleset body from the *target* policy with `build_branch_ruleset_body(policy)` (pass `branch_pattern="~DEFAULT_BRANCH"` for branches; for tags, build a `target: "tag"` ruleset with a `ref_name` pattern like `refs/tags/v*` — see `references/writing-a-policy.md`), then `apply_branch_ruleset(owner, repo, body)`. This creates a repo-level ruleset; it never touches org-level rulesets.
+- **Repo settings** (merge strategy, delete-branch-on-merge, auto-merge): `scripts/apply.py`'s `apply_repo_settings(owner, repo, {<only the approved keys>})`. PATCHes the repo directly; only send the keys that were actually approved.
+- **Branch protection, release-tag protection** (PR requirement, approvals, review threads, signed commits, linear history, force-push/deletion blocking, required status checks, up to date before merge, bypass actors): build the ruleset body from the *target* policy with `build_branch_ruleset_body(policy)` (pass `branch_pattern="~DEFAULT_BRANCH"` for branches; for tags, build a `target: "tag"` ruleset with a `ref_name` pattern like `refs/tags/v*` — see `references/writing-a-policy.md`). The body always carries an empty bypass list.
+  - **No repo-level ruleset protects the branch yet:** `apply_branch_ruleset(owner, repo, body)` creates one.
+  - **One already does** (list them with `gh api repos/<owner>/<repo>/rulesets`): update *that* ruleset rather than adding a second, overlapping one. Read it (`gh api repos/<owner>/<repo>/rulesets/<id>`), show the user its current rules next to the body you'd send, and keep any rule the policy doesn't speak to — a PUT replaces the whole ruleset — then `apply_branch_ruleset(owner, repo, body, ruleset_id=<id>)`.
+  - Org-level rulesets are never touched; report their gaps instead.
 - **Governance files** (CODEOWNERS, CONTRIBUTING.md, SECURITY.md, PR/issue templates, Dependabot config, AGENTS.md): these are ordinary file changes. Create them on a branch and open a PR — never commit directly to the default branch. This is the one category where "apply" means "propose a reviewable diff," because a file change is naturally PR-reviewable and a direct settings/ruleset API call is not.
 
 ### 5. Verify
