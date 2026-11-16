@@ -20,6 +20,11 @@ Checked 2026-10-18 against Superpowers 7.0.0 (installed, `.claude/plugins/cache/
 
 ## The genuine gap `deliver` fills
 
+Task authorization and repository enforcement are distinct. `SKILL.md`'s
+**Task authorization and enforcement** section owns that contract, including
+standing lifecycle instructions, narrower endpoints and Guardrail integration.
+Gate 2 verifies existing authorization instead of repeatedly requesting it.
+
 Nothing above, individually or in combination, covers: **push → diagnose and fix red CI → re-run the exact local validation that CI runs → repeat until green → squash-merge once authorized → confirm the merge landed → clean up safely.** `finishing-a-development-branch`'s menu is the closest existing thing and stops one step short (at "PR created"), by design -- it assumes a human continues from there. `deliver` is for the case where the task's authorization already covers that continuation, so the agent doesn't have to ask the same "what now" question after every push, the way this project's own session history shows happening by hand, every time, via an explicit "fix on red, merge on green, cleanup on merged" instruction.
 
 The other genuinely new piece is the **local-validation contract** (`scripts/validation_contract.py`): a repo-owned mapping from what CI actually runs to the exact local command, built by parsing the repository's own `.github/workflows/*.yml` rather than hand-maintaining a second list that drifts from CI. Nothing in Superpowers or Matt's skills does this; `verification-before-completion` requires evidence but never says *which commands* constitute it for a given repo.
