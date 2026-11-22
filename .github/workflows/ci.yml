@@ -189,6 +189,10 @@ jobs:
         run: python3 -m unittest discover -s tests -v
       - name: sync-vendor.sh diff-portability test
         run: bash scripts/tests/test_sync_vendor.sh
+      # Stock macOS has no `timeout`. The council skill uses gtimeout from
+      # Homebrew coreutils there, so the time-limit checks need it installed.
+      - name: install coreutils (gtimeout) for the council time-limit checks
+        run: brew install coreutils
       # Runs the shell commands the council skill tells a coordinator to type
       # (snapshot, worktree, time limit, brief copy), with no agent launched.
       - name: council skill shell commands
