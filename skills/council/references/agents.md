@@ -5,6 +5,21 @@ Every line below carries a status: `verified <date>` (it ran and did what the li
 unknown. All runs were made from a Claude Code 2.1.330 coordinator on Linux; no other coordinator
 has been tried.
 
+## Systems and shells
+
+The commands are written for bash or zsh: `VAR=value command`, `< /dev/null`, the `command`
+builtin, coreutils `timeout`, `env -u`, `uuidgen`, `jq`. PowerShell and `cmd` cannot run them as
+written and are not supported; on Windows the coordinator needs a bash shell such as Git Bash, or
+WSL (which is Linux for this purpose).
+
+- **Linux:** every command and every agent launch in this file — verified 2026-11-21.
+- **macOS:** not tested. Stock macOS may lack `timeout`; if `command -v timeout` prints nothing,
+  tell the operator rather than launching without a time limit.
+- **Windows, Git Bash:** not tested, neither the shell commands nor any agent launch.
+
+`bash scripts/tests/test_council_commands.sh` in this skill's repository runs the shell commands
+(no agent) on the system it is run on and prints PASS or FAIL for each.
+
 ## Reading the command lines
 
 - `<worktree>` is the member's own directory. `<prompt>` is always exactly
