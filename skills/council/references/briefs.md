@@ -239,9 +239,9 @@ Written when the run starts and updated after every round.
 
 ## Snapshots
 
-| Round | Ref | Commit |
+| Round | Kind | Commit |
 |---|---|---|
-| 1 | <refs/council/<run>/round-1, or HEAD> | <hash> |
+| 1 | <existing commit, or snapshot of uncommitted work> | <full hash> |
 
 ## Members
 

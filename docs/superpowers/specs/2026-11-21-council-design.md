@@ -149,6 +149,10 @@ branch.**
   The coordinator never commits to the operator's branch on the council's behalf. Snapshot refs are
   deleted when the run is closed. (Builder's call; the exact git commands are left to the builder,
   the requirement is that nothing the operator sees changes.)
+  **Changed by the operator on 2026-11-21, after the first live runs:** no snapshot ref is
+  created. The snapshot commit is held by the members' worktrees and its hash is recorded in
+  `run.md`. Reason: on a machine whose guardrail denies ref deletion, every ref was one more
+  clean-up command for the operator, and the worktrees already keep the snapshot.
 - The run directory is not inside any member's worktree.
 - Worktree location and creation follow `superpowers:using-git-worktrees` where it is installed.
 - After a round, the coordinator runs `git status` in each read-only member's worktree and reports

@@ -17,7 +17,7 @@
     {
       "id": "uncommitted-work-snapshot-leaves-branch-untouched",
       "category": "snapshot",
-      "description": "The work under review is uncommitted. The coordinator must record it as a snapshot commit on refs/council/<run>/round-<n> without changing the operator's branch, index or working tree.",
+      "description": "The work under review is uncommitted. The coordinator must record it as a snapshot commit that no branch or ref points to, without changing the operator's branch, index or working tree.",
       "status": "verified-live",
       "verification": "Record git rev-parse HEAD, git status --porcelain and git diff --cached --stat before and after the snapshot commands. Pass: all three identical. Ran 2026-11-21 on a fixture repository (identical) and in three live runs in this repository (branch and status unchanged)."
     },
@@ -26,7 +26,7 @@
       "category": "snapshot",
       "description": "The uncommitted work includes a new file that was never added. A snapshot built from tracked changes only would hide it from members.",
       "status": "verified-live",
-      "verification": "After the snapshot commands, git ls-tree -r --name-only on the snapshot ref. Pass: the untracked file is listed. Ran 2026-11-21: the fixture's new.txt and this repository's then-untracked skills/council/SKILL.md were both in their snapshots."
+      "verification": "After the snapshot commands, git ls-tree -r --name-only on the snapshot commit. Pass: the untracked file is listed. Ran 2026-11-21: the fixture's new.txt and this repository's then-untracked skills/council/SKILL.md were both in their snapshots."
     },
     {
       "id": "read-only-member-wrote-file-is-reported",
@@ -97,6 +97,13 @@
       "description": "After an Advise round with three valid replies, each member votes on the other two replies. No ballot may name its own voter, and the tally informs the coordinator's decision without binding it.",
       "status": "verified-live",
       "verification": "Ran 2026-11-21 with claude-haiku, codex and opencode-glm, each on its resumed session: three ballots saved under votes/, none named its own voter, and decision.md has a Votes section that says where the conclusion departs from the tally."
+    },
+    {
+      "id": "snapshot-without-ref-stays-reachable",
+      "category": "snapshot",
+      "description": "A snapshot commit has no ref. It must stay in the repository while a member's worktree is checked out at it, and the previous round's snapshot must stay after the worktree moves to the next round.",
+      "status": "verified-live",
+      "verification": "Ran 2026-11-21 on a fixture repository with git 2.53.0: two ref-less snapshot commits, one worktree moved from the first to the second. git fsck --unreachable listed neither commit; with --no-reflogs it listed only the first, so the current snapshot is held by the worktree's HEAD and the earlier one by its reflog. An actual git gc was not run (denied by the machine's security tool)."
     },
     {
       "id": "review-second-round-resumes-same-session",
