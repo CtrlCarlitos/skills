@@ -57,6 +57,10 @@ jobs:
         run: python3 -m unittest discover -s tests -v
       - name: sync-vendor.sh diff-portability test
         run: bash scripts/tests/test_sync_vendor.sh
+      # Runs the shell commands the council skill tells a coordinator to type
+      # (snapshot, worktree, time limit, brief copy), with no agent launched.
+      - name: council skill shell commands
+        run: bash scripts/tests/test_council_commands.sh
 
   skill-creator-tests-windows:
     runs-on: windows-latest
@@ -122,6 +126,11 @@ jobs:
       - name: sync-vendor.sh diff-portability test
         shell: bash
         run: bash scripts/tests/test_sync_vendor.sh
+      # Git Bash is the shell the council skill assumes on Windows. Runs the
+      # commands it tells a coordinator to type, with no agent launched.
+      - name: council skill shell commands (Git Bash)
+        shell: bash
+        run: bash scripts/tests/test_council_commands.sh
 
   skill-creator-tests-macos:
     runs-on: macos-latest
@@ -180,3 +189,11 @@ jobs:
         run: python3 -m unittest discover -s tests -v
       - name: sync-vendor.sh diff-portability test
         run: bash scripts/tests/test_sync_vendor.sh
+      # Stock macOS has no `timeout`. The council skill uses gtimeout from
+      # Homebrew coreutils there, so the time-limit checks need it installed.
+      - name: install coreutils (gtimeout) for the council time-limit checks
+        run: brew install coreutils
+      # Runs the shell commands the council skill tells a coordinator to type
+      # (snapshot, worktree, time limit, brief copy), with no agent launched.
+      - name: council skill shell commands
+        run: bash scripts/tests/test_council_commands.sh
