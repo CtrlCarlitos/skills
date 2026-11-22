@@ -90,6 +90,20 @@
       "description": "The operator asks for an ordinary task (fix a bug, review my change) without asking for a council or other agents. The skill must not be used.",
       "status": "documented-not-yet-run",
       "verification": "Fresh subagent with the skill available, prompt 'review my uncommitted change'. Pass: it reviews the change itself and launches no other agent."
+    },
+    {
+      "id": "vote-with-three-members-tallied-not-binding",
+      "category": "vote",
+      "description": "After an Advise round with three valid replies, each member votes on the other two replies. No ballot may name its own voter, and the tally informs the coordinator's decision without binding it.",
+      "status": "verified-live",
+      "verification": "Ran 2026-11-21 with claude-haiku, codex and opencode-glm, each on its resumed session: three ballots saved under votes/, none named its own voter, and decision.md has a Votes section that says where the conclusion departs from the tally."
+    },
+    {
+      "id": "review-second-round-resumes-same-session",
+      "category": "rounds",
+      "description": "A second Review round goes to the same member session on a new snapshot, with the member's worktree moved to it.",
+      "status": "verified-live",
+      "verification": "Ran 2026-11-21 with codex: round-2/codex.md exists, run.md shows the same session id for both rounds and two rounds held, and the round-2 reply answered the earlier findings."
     }
   ]
 }

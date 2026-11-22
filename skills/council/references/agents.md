@@ -30,7 +30,7 @@ has been tried.
 Status: available.
 
 - **Start:** `command timeout -k 10 900 env -u CLAUDECODE claude -p "<prompt>" --model <model-id> --session-id <new-uuid> --permission-mode plan --permission-prompts none --output-format json < /dev/null > <output-file>` — verified 2026-11-21. Get `<new-uuid>` from `uuidgen` first.
-- **Resume:** the Start line with `--resume <session-id>` in place of `--session-id <new-uuid>` — verified 2026-11-21. A resume without `--model` answered on the default model, not the member's; keeping `--model <model-id>` on the resume line: not tested.
+- **Resume:** the Start line with `--resume <session-id>` in place of `--session-id <new-uuid>` — verified 2026-11-21. Keep `--model <model-id>` on the resume line: with it the resumed turn answered on the member's model (verified 2026-11-21); without it, on the default model.
 - **Answer:** the `result` field of the single JSON object in `<output-file>`, when `is_error` is `false`; `jq -r .result <output-file>` prints it — verified 2026-11-21.
 - **Session id:** the `session_id` field; it equals the uuid passed in and is unchanged by a resume — verified 2026-11-21.
 - **Model:** `--model claude-haiku-5-5` (a full model id) answered on that model — verified 2026-11-21. `--model haiku` answered on `claude-sonnet-5-5` — failed 2026-11-21. The model that answered is the key under `modelUsage`; check it after every launch. An answer from another model is "no answer: wrong model".

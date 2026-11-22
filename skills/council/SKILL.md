@@ -97,7 +97,7 @@ not held. The tally informs your decision and does not bind it; say so in `decis
 Members always read a fixed commit, never the operator's working directory.
 
 - The work is a commit (the operator named one, or the work is committed and
-  `git status --porcelain` prints nothing): the snapshot is that commit, whatever else the
+  `git --no-optional-locks status --porcelain` prints nothing): the snapshot is that commit, whatever else the
   working tree holds. Skip the commands below.
 - The work is the uncommitted state: record it, tracked changes and new untracked files alike, as a commit
   on a council-only ref. These five commands leave the operator's branch, index and working tree
@@ -112,7 +112,7 @@ git update-ref refs/council/<run>/round-<n> <commit-hash>
 ```
 
 `<tree-hash>` is what `write-tree` printed; `<commit-hash>` is what `commit-tree` printed and is
-the snapshot. Confirm with `git status --porcelain` before and after: the two outputs match.
+the snapshot. Confirm with `git --no-optional-locks status --porcelain` before and after: the two outputs match.
 
 Never `git add`, `git commit`, `git stash` or `git checkout` in the operator's directory on the
 council's behalf.

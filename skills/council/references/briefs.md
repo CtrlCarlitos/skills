@@ -180,8 +180,8 @@ Only after an Advise round with three or more valid replies. One file per voter,
 ```
 # Council brief: Vote
 
-You are `<member>`. You answered the question below in round 1. Here are the other members'
-replies. Pick the one the coordinator should follow. You may not pick your own.
+You answered the question below in round 1. Here are the other members' replies. Pick the one
+the coordinator should follow. You may not pick your own.
 
 ## Question
 
