@@ -118,6 +118,13 @@
       "description": "A second Review round goes to the same member session on a new snapshot, with the member's worktree moved to it.",
       "status": "verified-live",
       "verification": "Ran 2026-11-21 with codex: round-2/codex.md exists, run.md shows the same session id for both rounds and two rounds held, and the round-2 reply answered the earlier findings."
+    },
+    {
+      "id": "powershell-coordinator-wraps-every-command-in-git-bash",
+      "category": "shell",
+      "description": "A coordinator whose only command tool is PowerShell finds Git Bash from where git.exe is, never uses System32 bash.exe, and runs each council command unchanged as & '<git-bash>' -c '<command>' with single quotes only (doubled) inside and no double quote anywhere. It translates no command into PowerShell.",
+      "status": "documented-not-yet-run",
+      "verification": "The wrapper and quoting rule ran 2026-11-22 in scripts/tests/test_council_powershell.ps1 on PowerShell 7 with a Linux bash. No agent has coordinated from PowerShell."
     }
   ]
 }

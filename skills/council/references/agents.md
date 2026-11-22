@@ -20,20 +20,54 @@ skill's repository; Review, Vote, a second round and more than one member: not t
 - **Agy 1.5.14, interactive, Linux, bash:** the whole round and closing — verified 2026-11-21.
   (Agy is unavailable as a member, below; as coordinator it is driven by the operator and works.)
 - **Agy 1.5.11, Windows:** failed 2026-11-21. Its only command tool runs PowerShell, so it
-  stopped at the shell check.
+  stopped at the shell check. That was before the "From PowerShell" wrapper below existed; Agy
+  coordinating through the wrapper: not tested.
 - **Codex 0.170.0, Linux, zsh:** failed 2026-11-21 at `git worktree add`: in the sandbox the
   session ran under, `.git` is read-only ("could not create leading directories of
   '.git/worktrees/...': Read-only file system"). A coordinator needs to write inside `.git`.
   Codex started in a mode that allows that: not tested.
 - **Codex, Windows:** failed 2026-11-21. Its command tool runs PowerShell, and guardrail's hook
   refused every command before the shell check ("cannot prove the Windows command shell").
+  Codex coordinating through the "From PowerShell" wrapper: not tested.
 
 ## Systems and shells
 
 The commands are written for bash or zsh: `VAR=value command`, `< /dev/null`, the `command`
-builtin, coreutils `timeout`, `env -u`, `jq`. PowerShell and `cmd` cannot run them as written and
-are not supported; on Windows the coordinator needs a bash shell such as Git Bash, or WSL (which
-is Linux for this purpose).
+builtin, coreutils `timeout`, `env -u`, `jq`. PowerShell and `cmd` cannot run them as written. On
+Windows the coordinator runs them in Git Bash: directly where its command tool is bash, through
+the wrapper below where its command tool is PowerShell. `cmd` is not supported. WSL is Linux for
+this purpose.
+
+### From PowerShell
+
+For a coordinator whose only command tool runs PowerShell. Every command in this skill stays as
+written and is handed to Git Bash; nothing is translated.
+
+- **Find Git Bash once.** `(Get-Command git).Source` prints where `git.exe` is, for example
+  `C:\Program Files\Git\cmd\git.exe`. Git Bash is `bin\bash.exe` under that Git folder:
+  `C:\Program Files\Git\bin\bash.exe`. Never `C:\Windows\System32\bash.exe`, which starts WSL.
+  Confirm with `& 'C:\Program Files\Git\bin\bash.exe' -c 'echo $BASH_VERSION; uname -s'`: a
+  version, then a name starting `MINGW` or `MSYS`. No Git Bash: stop and tell the operator.
+- **The wrapper:** `& '<git-bash>' -c '<the bash command>'`, one wrapped command per call, with
+  the literal path found above.
+- **Quotes.** The bash command is one PowerShell single-quoted string, so PowerShell changes
+  nothing in it. Inside it use single quotes only, each written twice (`''`), wherever this file
+  or `SKILL.md` shows a quote of either kind. No double quote appears anywhere in the call.
+- **Paths** inside the wrapper use forward slashes: `C:/Users/me/repo`.
+- **`cd <worktree> && command timeout -k 10 900 ...` stays inside the one wrapped command**, so
+  the time limit and the `command` first word are bash's.
+- A Claude member's Start line, wrapped:
+
+  ```
+  & 'C:\Program Files\Git\bin\bash.exe' -c 'cd ''C:/Users/me/repo/.worktrees/council/<run>/claude-haiku'' && command timeout -k 10 900 env -u CLAUDECODE claude -p ''Read the brief at agent-to-agent/brief.md and follow it.'' --model claude-haiku-5-5 --permission-mode plan --permission-prompts none --output-format json < /dev/null > ''C:/Users/me/repo/agent-to-agent/<run>/raw/round-1/claude-haiku.json'''
+  ```
+
+Status. The wrapper and quoting rule, run by `scripts/tests/test_council_powershell.ps1` (the
+time limit, `env -u`, the prompt arriving as one argument, a path with a space, the four snapshot
+commands, a worktree, a stand-in launch line, closing): verified 2026-11-22 on PowerShell 7 with
+the bash of a Linux machine. On Windows with Git Bash, PowerShell 7 and Windows PowerShell 5.1:
+not tested. Finding Git Bash from `git.exe`: not tested. An agent launched through the wrapper:
+not tested. How guardrail judges a wrapped command: not tested.
 
 "Shell commands" below means everything except launching an agent: the snapshot, the worktrees,
 the brief copy, the time limit, closing. They are run in this skill's repository CI on all three
