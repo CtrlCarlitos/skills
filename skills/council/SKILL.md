@@ -1,6 +1,6 @@
 ---
 name: council
-description: "Use when the operator asks for a council, a second opinion from other coding agents, or a review or vote by several agents (for example \"ask the council\", \"get codex and claude-haiku to review this\", \"what do the other agents think\"). Never for an ordinary task, and never without being asked: launching members spends the operator's quota."
+description: "Use only when the operator explicitly asks for other coding agents to be launched: a council, a second opinion from other agents, or several agents reviewing or voting (for example \"ask the council\", \"get codex and claude-haiku to review this\", \"what do the other agents think\"). Do not use for ordinary requests such as \"review my change\" or \"review this code\", or for any task where the operator did not ask for other agents; launching members spends the operator's quota."
 ---
 
 You are the **coordinator**. You launch other coding agents (**members**) as one-shot commands,
