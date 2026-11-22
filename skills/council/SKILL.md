@@ -35,7 +35,8 @@ models. A member on your own CLI is a separate fresh session that never sees you
 
 - The operator names the members. If they did not, propose a panel and ask once.
 - Before the first launch of a run, state each member's agent and model and what the agent's
-  status in `references/agents.md` is, and wait for the operator's OK.
+  status in `references/agents.md` is, and wait for the operator's OK. An OK the operator already
+  gave for exactly those members and models counts; state them all the same.
 - A member that will not start, or that `references/agents.md` marks unavailable for this request,
   is recorded as missing with the reason. The round goes on with the rest. Its place stays empty:
   no other agent or model stands in for it.
@@ -109,10 +110,11 @@ not held. The tally informs your decision and does not bind it; say so in `decis
 
 Members always read a fixed commit, never the operator's working directory.
 
-- The work is a commit (the operator named one, or the work is committed and
-  `git --no-optional-locks status --porcelain` prints nothing): the snapshot is that commit, whatever else the
-  working tree holds. Skip the commands below.
-- The work is the uncommitted state: record it, tracked changes and new untracked files alike, as
+- The work is a commit (the operator named one, or everything the request is about is already
+  committed): the snapshot is that commit, whatever else the working tree holds. Uncommitted
+  files that are not part of the request stay out of it. Skip the commands below.
+- You cannot tell whether an uncommitted file is part of the request: ask the operator once.
+- Any of the work is uncommitted: record the whole uncommitted state, tracked changes and new untracked files alike, as
   a commit that no branch or ref points to. These four commands leave the operator's branch,
   index and working tree exactly as they were. Run them from the repository root, one per call:
 
@@ -199,11 +201,12 @@ branch.**
 
 When the operator accepts or stops:
 
-1. Delete each member's brief copy (`command rm <worktree>/agent-to-agent/brief.md`, then
-   `rmdir <worktree>/agent-to-agent`). Run `git -C <worktree> status --porcelain` again, then
+1. Delete each member's brief copy (`command rm <worktree>/agent-to-agent/brief.md`, one command
+   per call). The empty folder stays; removing the worktree takes it along. Run
+   `git -C <worktree> status --porcelain` again, then
    `git worktree remove <path>` for each worktree that prints nothing. A worktree with anything in it
    stays until the operator has looked; forcing its removal is the operator's call.
-2. Delete `<run-dir>/snapshot.index`. Keep the rest of the run directory.
+2. Delete `<run-dir>/snapshot.index` if the run made one. Keep the rest of the run directory.
 3. Confirm: `git worktree list` shows no worktree of this run. Set `Closed` in `run.md`.
 
 Whatever is left after these steps is a hand-off, whether a worktree was not clean or the

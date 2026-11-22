@@ -2,8 +2,31 @@
 
 Every line below carries a status: `verified <date>` (it ran and did what the line says),
 `failed <date>` (it ran and did not), or `not tested`. Treat anything that is not `verified` as
-unknown. All runs were made from a Claude Code 2.1.330 coordinator on Linux; no other coordinator
-has been tried.
+unknown. Unless a line says otherwise, the run behind it was made from a Claude Code 2.1.330
+coordinator on Linux.
+
+## Coordinators
+
+Which agent can run this skill as coordinator. Apart from Claude Code, each line is one Advise
+round with one member (`claude-haiku` on `claude-haiku-5-5`), reported in issue #51 of this
+skill's repository; Review, Vote, a second round and more than one member: not tested there.
+
+- **Claude Code 2.1.330, Linux, zsh:** every request in this file — verified 2026-11-21.
+- **OpenCode v2.3.2, Linux, zsh:** the whole round and closing — verified 2026-11-21.
+- **OpenCode v2.3.2, Windows, Git Bash:** the round, with a snapshot of uncommitted work and the
+  Claude member's Start line — verified 2026-11-21. Closing — failed 2026-11-21: guardrail
+  refused a command that chained the brief deletion with `rmdir`. The skill no longer runs
+  `rmdir`; closing without it on Windows: not tested.
+- **Agy 1.5.14, interactive, Linux, bash:** the whole round and closing — verified 2026-11-21.
+  (Agy is unavailable as a member, below; as coordinator it is driven by the operator and works.)
+- **Agy 1.5.11, Windows:** failed 2026-11-21. Its only command tool runs PowerShell, so it
+  stopped at the shell check.
+- **Codex 0.170.0, Linux, zsh:** failed 2026-11-21 at `git worktree add`: in the sandbox the
+  session ran under, `.git` is read-only ("could not create leading directories of
+  '.git/worktrees/...': Read-only file system"). A coordinator needs to write inside `.git`.
+  Codex started in a mode that allows that: not tested.
+- **Codex, Windows:** failed 2026-11-21. Its command tool runs PowerShell, and guardrail's hook
+  refused every command before the shell check ("cannot prove the Windows command shell").
 
 ## Systems and shells
 
@@ -18,8 +41,10 @@ systems by `bash scripts/tests/test_council_commands.sh`, which prints PASS or F
 
 - **Linux:** shell commands and every agent launch in this file — verified 2026-11-21.
 - **Windows, Git Bash:** shell commands — verified 2026-11-21, including a native program being
-  stopped at the time limit. Agent launches — not tested. `uuidgen` is missing there (failed
-  2026-11-21); nothing in this skill needs it.
+  stopped at the time limit. Claude's Start line, from an OpenCode coordinator, answered on the
+  requested model — verified 2026-11-21. Claude's Resume line, and every Codex and OpenCode
+  member launch — not tested. `uuidgen` is missing there (failed 2026-11-21); nothing in this
+  skill needs it.
 - **macOS:** stock macOS has no `timeout` (failed 2026-11-21). With Homebrew `coreutils`
   installed, `timeout` is on `PATH` and every shell command passed, time limit included —
   verified 2026-11-21. Where `command -v timeout` prints nothing, tell the operator to install
@@ -126,7 +151,8 @@ ran, kept for the day its file access changes.
   commands where the harness has them (not tested in the launch check).
 - **Guardrail.** On a machine with guardrail, a launch, a worktree, or a write outside the
   session's repository may be denied or need the operator. On 2026-11-21 the launches were allowed;
-  printing the environment and one long command chain were denied. Follow the answer, write one
+  printing the environment and one long command chain were denied, and so was `rmdir` of an empty
+  folder (from an OpenCode coordinator, on Linux and on Windows). Follow the answer, write one
   literal command per call, and never work around a denial.
 - **Members leave tool litter.** A Claude or Codex member whose user configuration loads the
   Serena MCP server leaves an untracked `.serena/` directory in its worktree (verified

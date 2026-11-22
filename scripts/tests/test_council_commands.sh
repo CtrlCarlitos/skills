@@ -26,7 +26,7 @@ trap 'rm -rf "$work"' EXIT
 
 # --- tools the skill names ---------------------------------------------------
 
-for tool in git env jq mkdir cp rm rmdir; do
+for tool in git env jq mkdir cp rm; do
   if have "$tool"; then pass "tool present: $tool"; else fail "tool present: $tool" "not on PATH"; fi
 done
 
@@ -167,7 +167,8 @@ else fail "both ref-less snapshots stay reachable through the worktree" "$unreac
 
 # Closing: remove the brief copy, then the worktree.
 command rm "$wt/agent-to-agent/brief.md"
-rmdir "$wt/agent-to-agent"
+# The empty agent-to-agent/ folder is left in place on purpose: the skill no
+# longer runs rmdir, and the worktree removal below must take the folder along.
 if [ -z "$(git -C "$wt" status --porcelain)" ] && git worktree remove "$wt"; then
   if [ "$(git worktree list | wc -l | tr -d ' ')" = "1" ]; then pass "closing removes the member worktree"
   else fail "closing removes the member worktree" "worktree still listed"; fi
