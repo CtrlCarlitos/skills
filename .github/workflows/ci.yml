@@ -131,6 +131,15 @@ jobs:
       - name: council skill shell commands (Git Bash)
         shell: bash
         run: bash scripts/tests/test_council_commands.sh
+      # A coordinator whose only command tool is PowerShell hands each council
+      # command, unchanged, to Git Bash. Runs that wrapper on both PowerShells,
+      # with no agent launched.
+      - name: council skill commands through PowerShell 7
+        shell: pwsh
+        run: ./scripts/tests/test_council_powershell.ps1
+      - name: council skill commands through Windows PowerShell 5.1
+        shell: powershell
+        run: ./scripts/tests/test_council_powershell.ps1
 
   skill-creator-tests-macos:
     runs-on: macos-latest

@@ -7,33 +7,82 @@ coordinator on Linux.
 
 ## Coordinators
 
-Which agent can run this skill as coordinator. Apart from Claude Code, each line is one Advise
-round with one member (`claude-haiku` on `claude-haiku-5-5`), reported in issue #51 of this
-skill's repository; Review, Vote, a second round and more than one member: not tested there.
+Which agent can run this skill as coordinator. Apart from Claude Code on Linux, each line is one
+Advise round with one member (`claude-haiku` on `claude-haiku-5-5`), reported in issues #51 and
+#54 of this skill's repository; Review, Vote, a second round and more than one member: not
+tested there.
 
 - **Claude Code 2.1.330, Linux, zsh:** every request in this file — verified 2026-11-21.
+- **Claude Code 2.1.330, Windows, Git Bash:** the round — verified 2026-11-22. It has a bash tool
+  and a PowerShell tool and used the bash one. Closing — failed 2026-11-22: in its auto-approving
+  permission mode guardrail refused `git worktree remove`, so the run ended as a hand-off and
+  the operator removed the worktree.
 - **OpenCode v2.3.2, Linux, zsh:** the whole round and closing — verified 2026-11-21.
-- **OpenCode v2.3.2, Windows, Git Bash:** the round, with a snapshot of uncommitted work and the
-  Claude member's Start line — verified 2026-11-21. Closing — failed 2026-11-21: guardrail
-  refused a command that chained the brief deletion with `rmdir`. The skill no longer runs
-  `rmdir`; closing without it on Windows: not tested.
+- **OpenCode v2.3.2, Windows, Git Bash:** the round and a snapshot of uncommitted work —
+  verified 2026-11-21. Closing without `rmdir` — verified 2026-11-22: guardrail asked the
+  operator before `git worktree remove`, the operator approved, and the same command then ran.
 - **Agy 1.5.14, interactive, Linux, bash:** the whole round and closing — verified 2026-11-21.
   (Agy is unavailable as a member, below; as coordinator it is driven by the operator and works.)
-- **Agy 1.5.11, Windows:** failed 2026-11-21. Its only command tool runs PowerShell, so it
-  stopped at the shell check.
+- **Agy 1.5.11, interactive, Windows, PowerShell 7.6:** the whole round and closing, every
+  command through the "From PowerShell" wrapper below, nothing denied — verified 2026-11-22.
 - **Codex 0.170.0, Linux, zsh:** failed 2026-11-21 at `git worktree add`: in the sandbox the
   session ran under, `.git` is read-only ("could not create leading directories of
   '.git/worktrees/...': Read-only file system"). A coordinator needs to write inside `.git`.
   Codex started in a mode that allows that: not tested.
-- **Codex, Windows:** failed 2026-11-21. Its command tool runs PowerShell, and guardrail's hook
-  refused every command before the shell check ("cannot prove the Windows command shell").
+- **Codex, Windows, PowerShell:** failed 2026-11-21 and again 2026-11-22, both times before any
+  council command: guardrail's hook refused its first PowerShell command ("cannot prove the
+  Windows command shell", then "could not parse shell command"). Codex coordinating through the
+  wrapper: not tested.
 
 ## Systems and shells
 
 The commands are written for bash or zsh: `VAR=value command`, `< /dev/null`, the `command`
-builtin, coreutils `timeout`, `env -u`, `jq`. PowerShell and `cmd` cannot run them as written and
-are not supported; on Windows the coordinator needs a bash shell such as Git Bash, or WSL (which
-is Linux for this purpose).
+builtin, coreutils `timeout`, `env -u`, `jq`. PowerShell and `cmd` cannot run them as written. On
+Windows the coordinator runs them in Git Bash: directly where its command tool is bash, through
+the wrapper below where its command tool is PowerShell. `cmd` is not supported. WSL is Linux for
+this purpose.
+
+### From PowerShell
+
+For a coordinator whose only command tool runs PowerShell. Every command in this skill stays as
+written and is handed to Git Bash; nothing is translated.
+
+- **Find Git Bash once.** `(Get-Command git).Source` prints where `git.exe` is, for example
+  `C:\Program Files\Git\cmd\git.exe`. Git Bash is `bin\bash.exe` under that Git folder:
+  `C:\Program Files\Git\bin\bash.exe`. Never `C:\Windows\System32\bash.exe`, which starts WSL.
+  Confirm with `& 'C:\Program Files\Git\bin\bash.exe' -c 'echo $BASH_VERSION; uname -s'`: a
+  version, then a name starting `MINGW` or `MSYS`. No Git Bash: stop and tell the operator.
+- **The wrapper:** `& '<git-bash>' -c '<the bash command>'`, one wrapped command per call, with
+  the literal path found above.
+- **Quotes.** The bash command is one PowerShell single-quoted string, so PowerShell changes
+  nothing in it. Inside it use single quotes only, each written twice (`''`), wherever this file
+  or `SKILL.md` shows a quote of either kind. No double quote appears anywhere in the call.
+  One exception: bash expands nothing inside single quotes, so a `$variable` that bash must
+  expand is written with no quotes at all, as in the confirm command above. The only such
+  command in this skill is the shell check, which the confirm command replaces.
+- **Paths** inside the wrapper use forward slashes: `C:/Users/me/repo`.
+- **`cd <worktree> && command timeout -k 10 900 ...` stays inside the one wrapped command**, so
+  the time limit and the `command` first word are bash's.
+- A Claude member's Start line, wrapped:
+
+  ```
+  & 'C:\Program Files\Git\bin\bash.exe' -c 'cd ''C:/Users/me/repo/.worktrees/council/<run>/claude-haiku'' && command timeout -k 10 900 env -u CLAUDECODE claude -p ''Read the brief at agent-to-agent/brief.md and follow it.'' --model claude-haiku-5-5 --permission-mode plan --permission-prompts none --output-format json < /dev/null > ''C:/Users/me/repo/agent-to-agent/<run>/raw/round-1/claude-haiku.json'''
+  ```
+
+Status. The wrapper and quoting rule are run by `scripts/tests/test_council_powershell.ps1` (the
+time limit, `env -u`, the prompt arriving as one argument, a path with a space, the four snapshot
+commands, a worktree, a stand-in launch line, closing), with no agent launched:
+
+- Windows with Git Bash, on PowerShell 7.6 and on Windows PowerShell 5.1, in this repository's
+  CI — verified 2026-11-22. Finding Git Bash from `git.exe` gave
+  `C:\Program Files\Git\bin\bash.exe` there — verified 2026-11-22.
+- PowerShell 7 with the bash of a Linux machine — verified 2026-11-22.
+- An agent coordinating through the wrapper: Agy on PowerShell 7.6 ran a whole round and closed
+  it, the Claude member's launch included — verified 2026-11-22. From Windows PowerShell 5.1,
+  or from Codex: not tested.
+- How guardrail judges a wrapped command: nothing was denied in the Agy run (verified
+  2026-11-22); whether that session ran under guardrail is not known. On the Codex plane: not
+  tested.
 
 "Shell commands" below means everything except launching an agent: the snapshot, the worktrees,
 the brief copy, the time limit, closing. They are run in this skill's repository CI on all three
@@ -84,7 +133,7 @@ Status: available.
 
 - **Start:** `command timeout -k 10 900 env -u CLAUDECODE claude -p "<prompt>" --model <model-id> --permission-mode plan --permission-prompts none --output-format json < /dev/null > <output-file>` — verified 2026-11-21.
 - **Resume:** the Start line with `--resume <session-id>` added — verified 2026-11-21. Keep `--model <model-id>` on the resume line: with it the resumed turn answered on the member's model (verified 2026-11-21); without it, on the default model.
-- **Answer:** the `result` field of the single JSON object in `<output-file>`, when `is_error` is `false`; `jq -r .result <output-file>` prints it — verified 2026-11-21.
+- **Answer:** the `result` field of the single JSON object in `<output-file>`, when `is_error` is `false`; `jq -r .result <output-file>` prints it, and adding `> <reply-file>` saves it — verified 2026-11-21.
 - **Session id:** the `session_id` field of the output, a uuid Claude picks itself; unchanged by a resume — verified 2026-11-21. (`--session-id <uuid>` sets it up front and also works, verified 2026-11-21, but needs a uuid generator, which Git Bash on Windows lacks.)
 - **Model:** `--model claude-haiku-5-5` (a full model id) answered on that model — verified 2026-11-21. `--model haiku` answered on `claude-sonnet-5-5` — failed 2026-11-21. The model that answered is the key under `modelUsage`; check it after every launch. An answer from another model is "no answer: wrong model".
 - **Read-only:** `--permission-mode plan` with `--permission-prompts none` denied a file write; the denial is listed under `permission_denials` and no file appeared — verified 2026-11-21.
