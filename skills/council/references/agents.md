@@ -62,12 +62,16 @@ written and is handed to Git Bash; nothing is translated.
   & 'C:\Program Files\Git\bin\bash.exe' -c 'cd ''C:/Users/me/repo/.worktrees/council/<run>/claude-haiku'' && command timeout -k 10 900 env -u CLAUDECODE claude -p ''Read the brief at agent-to-agent/brief.md and follow it.'' --model claude-haiku-5-5 --permission-mode plan --permission-prompts none --output-format json < /dev/null > ''C:/Users/me/repo/agent-to-agent/<run>/raw/round-1/claude-haiku.json'''
   ```
 
-Status. The wrapper and quoting rule, run by `scripts/tests/test_council_powershell.ps1` (the
+Status. The wrapper and quoting rule are run by `scripts/tests/test_council_powershell.ps1` (the
 time limit, `env -u`, the prompt arriving as one argument, a path with a space, the four snapshot
-commands, a worktree, a stand-in launch line, closing): verified 2026-11-22 on PowerShell 7 with
-the bash of a Linux machine. On Windows with Git Bash, PowerShell 7 and Windows PowerShell 5.1:
-not tested. Finding Git Bash from `git.exe`: not tested. An agent launched through the wrapper:
-not tested. How guardrail judges a wrapped command: not tested.
+commands, a worktree, a stand-in launch line, closing), with no agent launched:
+
+- Windows with Git Bash, on PowerShell 7.6 and on Windows PowerShell 5.1, in this repository's
+  CI — verified 2026-11-22. Finding Git Bash from `git.exe` gave
+  `C:\Program Files\Git\bin\bash.exe` there — verified 2026-11-22.
+- PowerShell 7 with the bash of a Linux machine — verified 2026-11-22.
+- An agent launched through the wrapper, and an agent coordinating from PowerShell: not tested.
+- How guardrail judges a wrapped command: not tested.
 
 "Shell commands" below means everything except launching an agent: the snapshot, the worktrees,
 the brief copy, the time limit, closing. They are run in this skill's repository CI on all three

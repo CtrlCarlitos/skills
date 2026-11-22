@@ -124,7 +124,7 @@
       "category": "shell",
       "description": "A coordinator whose only command tool is PowerShell finds Git Bash from where git.exe is, never uses System32 bash.exe, and runs each council command unchanged as & '<git-bash>' -c '<command>' with single quotes only (doubled) inside and no double quote anywhere. It translates no command into PowerShell.",
       "status": "documented-not-yet-run",
-      "verification": "The wrapper and quoting rule ran 2026-11-22 in scripts/tests/test_council_powershell.ps1 on PowerShell 7 with a Linux bash. No agent has coordinated from PowerShell."
+      "verification": "The wrapper and quoting rule ran 2026-11-22 in scripts/tests/test_council_powershell.ps1 on Windows with Git Bash under PowerShell 7 and Windows PowerShell 5.1 (CI), with no agent. No agent has coordinated from PowerShell."
     }
   ]
 }
