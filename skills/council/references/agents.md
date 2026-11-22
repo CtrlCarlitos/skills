@@ -1,0 +1,102 @@
+# Launching each agent as a council member
+
+Every line below carries a status: `verified <date>` (it ran and did what the line says),
+`failed <date>` (it ran and did not), or `not tested`. Treat anything that is not `verified` as
+unknown. All runs were made from a Claude Code 2.1.330 coordinator on Linux; no other coordinator
+has been tried.
+
+## Reading the command lines
+
+- `<worktree>` is the member's own directory. `<prompt>` is
+  `Read the brief at <absolute path to the brief> and follow it.` unless **Brief access** says the
+  brief text itself must be the prompt.
+- **`command` is the first word of every launch, and the agent's name is never the first word.**
+  A shell alias is expanded only for the first word of a command. `timeout` and `env` start the
+  binary found on `PATH` and never see aliases, so `command timeout 900 agy ...` runs the real
+  `agy` even where `agy` is aliased to add a bypass flag. Writing `timeout 900 command agy ...`
+  does not work: `command` is a shell builtin and `timeout` cannot run it (exit 127, failed
+  2026-11-21).
+- `900` is the 15 minute limit in seconds. Exit status `124` means the limit fired.
+- `< /dev/null` stops an agent from waiting on the coordinator's standard input.
+- Run each launch from the member's directory: `cd <worktree> && command timeout 900 ...`.
+
+## Claude
+
+Status: available.
+
+- **Start:** `command timeout 900 env -u CLAUDECODE claude -p "<prompt>" --model <model-id> --session-id <new-uuid> --permission-mode plan --permission-prompts none --output-format json < /dev/null > <output-file>` — verified 2026-11-21. Get `<new-uuid>` from `uuidgen` first.
+- **Resume:** the Start line with `--resume <session-id>` in place of `--session-id <new-uuid>` — verified 2026-11-21. A resume without `--model` answered on the default model, not the member's; keeping `--model <model-id>` on the resume line: not tested.
+- **Answer:** the `result` field of the single JSON object in `<output-file>`, when `is_error` is `false` — verified 2026-11-21.
+- **Session id:** the `session_id` field; it equals the uuid passed in and is unchanged by a resume — verified 2026-11-21.
+- **Model:** `--model claude-haiku-5-5` (a full model id) answered on that model — verified 2026-11-21. `--model haiku` answered on `claude-sonnet-5-5` — failed 2026-11-21. The model that answered is the key under `modelUsage`; check it after every launch and record a mismatch in `run.md`.
+- **Read-only:** `--permission-mode plan` with `--permission-prompts none` denied a file write; the denial is listed under `permission_denials` and no file appeared — verified 2026-11-21.
+- **Brief access:** read a brief outside its worktree — verified 2026-11-21.
+- **Version:** 2.1.330 (`command claude --version`) — verified 2026-11-21.
+
+## Codex
+
+Status: available.
+
+- **Start:** `command timeout 900 codex exec --sandbox read-only -C <worktree> --json -o <reply-file> "<prompt>" < /dev/null > <events-file>` — verified 2026-11-21.
+- **Resume:** `command timeout 900 codex exec resume <session-id> --json -o <reply-file> "<prompt>" < /dev/null > <events-file>`, run from `<worktree>` — verified 2026-11-21. The resume form accepts neither `--sandbox` nor `-C`.
+- **Answer:** the whole content of `<reply-file>` — verified 2026-11-21.
+- **Session id:** `thread_id` on the first line of `<events-file>` (`"type":"thread.started"`); unchanged by a resume — verified 2026-11-21.
+- **Model:** `-m <model>` — not tested. Without it Codex uses the operator's configured model, and the output does not name it; record the model as "configured default".
+- **Read-only:** a write asked for on a resumed session was refused ("read-only filesystem access") and no file appeared — verified 2026-11-21.
+- **Brief access:** read a brief outside its worktree — verified 2026-11-21.
+- **Version:** codex-cli 0.170.0 (`command codex --version`) — verified 2026-11-21.
+
+## OpenCode
+
+Status: available; read-only by rule only.
+
+- **Start:** `command timeout 900 opencode run --format json -m <provider/model> "<prompt>" < /dev/null > <events-file>` — verified 2026-11-21.
+- **Resume:** the Start line with `--session <session-id>` added — verified 2026-11-21.
+- **Answer:** the `part.text` value on the last line of `<events-file>` whose `type` is `text`; earlier `text` lines are progress notes, not the answer — verified 2026-11-21.
+- **Session id:** `sessionID` on every line, of the form `ses_...`; unchanged by a resume — verified 2026-11-21.
+- **Model:** `-m zai-coding-plan/glm-5.3` was accepted, but the output does not name the model that answered — not tested. `command opencode models` lists the ids.
+- **Read-only:** by rule only: asked to create a file, it created it — verified 2026-11-21. Never add `--auto`.
+- **Brief access:** its read tool was refused outside the worktree ("external_directory ... auto-rejecting"); it then read the brief with a shell command and answered correctly — verified 2026-11-21.
+- **Version:** v2.3.2 (`command opencode --version`) — verified 2026-11-21.
+
+## Agy
+
+Status: unavailable for any request where the member must read files, which is every Review and
+most Advise. It can answer only from text placed in the prompt.
+
+- **Start:** `command timeout 900 agy --sandbox --output-format json --print="<the brief text itself>" < /dev/null > <output-file>` — verified 2026-11-21.
+- **Resume:** the Start line with `--conversation <session-id>` added before `--print=` — verified 2026-11-21.
+- **Answer:** the `response` field of the single JSON object. An empty `response`, or a `denied_actions` field, means no answer, whatever `status` and the exit status say — verified 2026-11-21.
+- **Session id:** `conversation_id`; unchanged by a resume — verified 2026-11-21.
+- **Model:** `--model <id>` — not tested. `command agy models` lists the ids.
+- **Read-only:** headless, a file write was denied (`denied_actions` named `write_file`) and no file appeared — verified 2026-11-21. Shell commands under `--sandbox` — not tested.
+- **Brief access:** reading a file was denied (`denied_actions` named `read_file`), both outside and inside its worktree — failed 2026-11-21. Adding `--mode plan`, or a `--settings` value with a `permissions.allow` rule for `read_file` (three spellings), did not change that — failed 2026-11-21. The only thing that lifts it is the bypass flag, which is never used.
+- **Version:** 1.5.14 (`command agy --version`) — verified 2026-11-21.
+
+## Hazards
+
+- **OpenCode writes when asked; Agy cannot read.** OpenCode has no read-only switch, so its member
+  is read-only by rule and the `git status --porcelain` check is what reveals a stray write
+  (verified 2026-11-21). Agy headless denies every file tool, so it changes nothing but also sees
+  nothing (verified 2026-11-21).
+- **A hung member.** OpenCode has hung with no output on this machine before; it did not in
+  five runs on 2026-11-21. With a 5 second limit every agent ended with exit status `124` and left
+  no process behind (verified 2026-11-21). A turn that ends that way is "no answer".
+- **Agy's exit status proves nothing.** It exited `0` with `"status":"SUCCESS"` and an empty
+  `response` when a tool was denied (verified 2026-11-21). Read the result. A bare `--print`
+  swallows the next flag; always write `--print=` (not tested here; carried from earlier findings).
+- **A Claude member under a Claude coordinator** is launched with `env -u CLAUDECODE` (every
+  Claude launch on 2026-11-21 used it; launching without it: not tested).
+- **A member turn can outlast the coordinator's own command limit.** Launch members as background
+  commands where the harness has them (not tested in the launch check).
+- **Guardrail.** On a machine with guardrail, a launch, a worktree, or a write outside the
+  session's repository may be denied or need the operator. On 2026-11-21 the launches were allowed;
+  printing the environment and one long command chain were denied. Follow the answer, write one
+  literal command per call, and never work around a denial.
+- **Members leave tool litter.** A Claude or Codex member whose user configuration loads the
+  Serena MCP server leaves an untracked `.serena/` directory in its worktree (verified
+  2026-11-21). The `git status --porcelain` check will show it. Report it as tool litter, by name,
+  and separately from a file the member itself wrote.
+- **A member loads the operator's own configuration**, including plugins and hooks. A one-line
+  Claude turn cost $0.18 on `claude-sonnet-5-5` and $0.009 on `claude-haiku-5-5` (verified
+  2026-11-21). Say which model each member will use before launching.
