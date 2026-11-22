@@ -20,10 +20,11 @@ systems by `bash scripts/tests/test_council_commands.sh`, which prints PASS or F
 - **Windows, Git Bash:** shell commands — verified 2026-11-21, including a native program being
   stopped at the time limit. Agent launches — not tested. `uuidgen` is missing there (failed
   2026-11-21); nothing in this skill needs it.
-- **macOS:** shell commands other than the time limit — verified 2026-11-21. Stock macOS has no
-  `timeout` (failed 2026-11-21). Where `command -v timeout` prints nothing, write `gtimeout` in
-  its place, from Homebrew `coreutils` (not tested); where that is missing too, tell the operator
-  what to install. A member is never launched without a time limit. Agent launches — not tested.
+- **macOS:** stock macOS has no `timeout` (failed 2026-11-21). With Homebrew `coreutils`
+  installed, `timeout` is on `PATH` and every shell command passed, time limit included —
+  verified 2026-11-21. Where `command -v timeout` prints nothing, tell the operator to install
+  `coreutils`; writing its `gtimeout` name in place of `timeout`: not tested. A member is never
+  launched without a time limit. Agent launches — not tested.
 - **Long paths on Windows:** a member's worktree adds `.worktrees/council/<run>/<member>/` to
   every path; whether that trips the 260-character limit: not tested.
 
