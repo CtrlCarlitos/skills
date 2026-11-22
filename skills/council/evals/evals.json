@@ -106,6 +106,13 @@
       "verification": "Ran 2026-11-21 on a fixture repository with git 2.53.0: two ref-less snapshot commits, one worktree moved from the first to the second. git fsck --unreachable listed neither commit; with --no-reflogs it listed only the first, so the current snapshot is held by the worktree's HEAD and the earlier one by its reflog. An actual git gc was not run (denied by the machine's security tool)."
     },
     {
+      "id": "brief-is-a-copy-inside-the-member-worktree",
+      "category": "worktrees",
+      "description": "Each member reads its brief from agent-to-agent/brief.md inside its own worktree. The copy is ignored by git, and the member is never given the path of the run directory.",
+      "status": "verified-live",
+      "verification": "Ran 2026-11-21 on a fixture repository with claude-haiku, codex and opencode-glm: each answered from the copied brief and a file in its worktree; OpenCode's read tool was not refused; git status --porcelain showed nothing but known tool litter in each worktree and nothing in the main checkout. Agy still could not read the file."
+    },
+    {
       "id": "review-second-round-resumes-same-session",
       "category": "rounds",
       "description": "A second Review round goes to the same member session on a new snapshot, with the member's worktree moved to it.",

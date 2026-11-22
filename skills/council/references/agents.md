@@ -7,8 +7,9 @@ has been tried.
 
 ## Reading the command lines
 
-- `<worktree>` is the member's own directory. `<prompt>` is
-  `Read the brief at <absolute path to the brief> and follow it.`
+- `<worktree>` is the member's own directory. `<prompt>` is always exactly
+  `Read the brief at agent-to-agent/brief.md and follow it.` The coordinator copies the member's
+  brief to that path inside `<worktree>` before launching.
 - **`command` is the first word of every launch, and the agent's name is never the first word.**
   A shell alias is expanded only for the first word of a command. `timeout` and `env` start the
   binary found on `PATH` and never see aliases, so `command timeout -k 10 900 agy ...` runs the real
@@ -23,7 +24,7 @@ has been tried.
   the first signal: not tested.
 - **Text that came from a member or a file never goes on a command line.** Inside double quotes
   the shell runs `$(...)` and backticks before the agent starts. `<prompt>` is always the fixed
-  sentence above with a path you chose. The one value taken from output is a session id, and only
+  sentence above; on a Resume line it is `Read the new brief at agent-to-agent/brief.md and follow it.`, after the coordinator has replaced the copy (verified 2026-11-21 on Claude, Codex and OpenCode). The one value taken from output is a session id, and only
   when it has the form its **Session id** line gives (a uuid, or `ses_` plus letters and digits).
 - `< /dev/null` keeps an agent from waiting on the coordinator's standard input. Every launch on
   2026-11-21 used it; launching without it: not tested.
@@ -39,7 +40,7 @@ Status: available.
 - **Session id:** the `session_id` field; it equals the uuid passed in and is unchanged by a resume — verified 2026-11-21.
 - **Model:** `--model claude-haiku-5-5` (a full model id) answered on that model — verified 2026-11-21. `--model haiku` answered on `claude-sonnet-5-5` — failed 2026-11-21. The model that answered is the key under `modelUsage`; check it after every launch. An answer from another model is "no answer: wrong model".
 - **Read-only:** `--permission-mode plan` with `--permission-prompts none` denied a file write; the denial is listed under `permission_denials` and no file appeared — verified 2026-11-21.
-- **Brief access:** read a brief outside its worktree — verified 2026-11-21.
+- **Brief access:** read `agent-to-agent/brief.md` inside its worktree — verified 2026-11-21. It can also read a brief outside its worktree (verified 2026-11-21), which the skill no longer relies on.
 - **Version:** 2.1.330 (`command claude --version`) — verified 2026-11-21.
 
 ## Codex
@@ -52,7 +53,7 @@ Status: available.
 - **Session id:** `thread_id` on the first line of `<events-file>` (`"type":"thread.started"`); unchanged by a resume — verified 2026-11-21.
 - **Model:** `-m <model>` — not tested. Without it Codex uses the operator's configured model, and the output does not name it; record the model as "configured default".
 - **Read-only:** a write asked for on a resumed session was refused ("read-only filesystem access") and no file appeared — verified 2026-11-21.
-- **Brief access:** read a brief outside its worktree — verified 2026-11-21.
+- **Brief access:** read `agent-to-agent/brief.md` inside its worktree — verified 2026-11-21. It can also read a brief outside its worktree (verified 2026-11-21), which the skill no longer relies on.
 - **Version:** codex-cli 0.170.0 (`command codex --version`) — verified 2026-11-21.
 
 ## OpenCode
@@ -65,7 +66,7 @@ Status: available; read-only by rule only.
 - **Session id:** `sessionID` on every line, of the form `ses_...`; unchanged by a resume — verified 2026-11-21.
 - **Model:** `-m zai-coding-plan/glm-5.3` was accepted, but the output does not name the model that answered — not tested. `command opencode models` lists the ids.
 - **Read-only:** by rule only: asked to create a file, it created it — verified 2026-11-21. Never add `--auto`.
-- **Brief access:** its read tool was refused outside the worktree ("external_directory ... auto-rejecting"); it then read the brief with a shell command and answered correctly — verified 2026-11-21.
+- **Brief access:** read `agent-to-agent/brief.md` inside its worktree with its own read tool, nothing refused — verified 2026-11-21. Outside the worktree its read tool is refused ("external_directory ... auto-rejecting") and it falls back to a shell command (verified 2026-11-21); the skill no longer relies on that.
 - **Version:** v2.3.2 (`command opencode --version`) — verified 2026-11-21.
 
 ## Agy
@@ -80,7 +81,7 @@ ran, kept for the day its file access changes.
 - **Session id:** `conversation_id`; unchanged by a resume — verified 2026-11-21.
 - **Model:** `--model <id>` — not tested. `command agy models` lists the ids.
 - **Read-only:** headless, a file write was denied (`denied_actions` named `write_file`) and no file appeared — verified 2026-11-21. Shell commands under `--sandbox` — not tested.
-- **Brief access:** reading a file was denied (`denied_actions` named `read_file`), both outside and inside its worktree — failed 2026-11-21. Adding `--mode plan`, or a `--settings` value with a `permissions.allow` rule for `read_file` (three spellings), did not change that — failed 2026-11-21. Agy's own error message names the bypass flag as the way round; that is never used, so: not tested.
+- **Brief access:** reading a file was denied (`denied_actions` named `read_file`), both outside its worktree and inside it, including `agent-to-agent/brief.md` — failed 2026-11-21. Adding `--mode plan`, or a `--settings` value with a `permissions.allow` rule for `read_file` (three spellings), did not change that — failed 2026-11-21. Agy's own error message names the bypass flag as the way round; that is never used, so: not tested.
 - **Version:** 1.5.14 (`command agy --version`) — verified 2026-11-21.
 
 ## Hazards

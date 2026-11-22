@@ -60,7 +60,8 @@ they have the form the agent's **Session id** line gives.
    the test command and result from a run the operator or you already made of that exact state.
    The council itself runs no test suite in the operator's checkout; with no such run, write
    "none run".
-4. **Worktrees.** Create one per member (Worktrees, below).
+4. **Worktrees.** Create one per member and give each its own copy of the brief (Worktrees,
+   below).
 5. **Launch** every member with its **Start** line (Launching, below), side by side.
 6. **Capture.** When a member's command returns, take its answer from where its **Answer** line
    says, and its session id from its **Session id** line. A valid reply is saved as
@@ -86,12 +87,13 @@ work for the operator, done where and how the operator already has you working; 
 the council and needs the operator to have asked for the fixes. Then take a new snapshot for round
 `<n>`, create `round-<n>/` and `raw/round-<n>/`, move each member's worktree to it with
 `git -C <worktree> checkout --detach <new-hash>`, write `round-<n>/brief.md` from the Follow-up
-brief, and launch each member with its **Resume** line and the session id from `run.md`. A member
+brief, copy it over each member's `agent-to-agent/brief.md`, and launch each member with its **Resume** line and the session id from `run.md`. A member
 sits the round out, recorded as "no answer" with the reason, when it has no session id, when step
 7 found anything in its worktree other than tool litter named in `references/agents.md`, or when
 the checkout fails.
 
-**Vote:** create `votes/` and `raw/votes/`, write one Vote brief per voter, and launch each voter
+**Vote:** create `votes/` and `raw/votes/`, write one Vote brief per voter, copy each over that
+voter's `agent-to-agent/brief.md`, and launch each voter
 with its **Resume** line, sending raw output to `raw/votes/`. Save valid ballots as
 `votes/<member>.md`. With fewer than three valid ballots the vote is reported as
 not held. The tally informs your decision and does not bind it; say so in `decision.md`.
@@ -131,14 +133,19 @@ or `git checkout` in the operator's directory on the council's behalf.
 One rule: **no member works in the operator's directory, and that directory never changes
 branch.**
 
-- `git worktree add --detach <path> <snapshot-hash>` for each member. Place it where
-  `superpowers:using-git-worktrees` says when that skill is installed, otherwise at
-  `<repo>/.worktrees/council/<run>/<member>`.
-- The run directory is outside every member's worktree.
+- `git worktree add --detach <path> <snapshot-hash>` for each member, at
+  `<repo>/.worktrees/council/<run>/<member>`: inside the repository, under the same
+  `.worktrees/` directory `superpowers:using-git-worktrees` uses.
+- **The member's brief is a copy inside its own worktree.** After creating the worktree:
+  `mkdir -p <worktree>/agent-to-agent`, then `command cp <the brief> <worktree>/agent-to-agent/brief.md` (`command` so an interactive `cp` alias cannot stall it).
+  The folder is ignored by the line step 1 added, so the worktree's status stays clean. The
+  member is told only that relative path. It is never given the run directory, which stays
+  outside every member's worktree, so no member can find another's reply there.
 - **No repository involved (not tested: no agent has been launched this way):** no worktrees and
   no snapshot. The run directory is `agent-to-agent/<run>/` in the directory you are working in.
   Each member runs in its own empty directory `agent-to-agent/scratch/<run>/<member>`, beside
-  the run directory, which you create with `mkdir -p`. Skip every git command: the ignore lines
+  the run directory, which you create with `mkdir -p` and give its brief copy the same way as a
+  worktree. Skip every git command: the ignore lines
   and leftover list in step 1, and steps 2, 4 and 7. In the brief, replace the Snapshot section
   with one line saying there are no files to read, and close by setting `Closed`. An agent whose
   Start line fails outside a repository is recorded as missing.
@@ -185,8 +192,9 @@ branch.**
 
 When the operator accepts or stops:
 
-1. Run `git -C <worktree> status --porcelain` again for each member's worktree, then
-   `git worktree remove <path>` for each one that prints nothing. A worktree with anything in it
+1. Delete each member's brief copy (`command rm <worktree>/agent-to-agent/brief.md`, then
+   `rmdir <worktree>/agent-to-agent`). Run `git -C <worktree> status --porcelain` again, then
+   `git worktree remove <path>` for each worktree that prints nothing. A worktree with anything in it
    stays until the operator has looked; forcing its removal is the operator's call.
 2. Delete `<run-dir>/snapshot.index`. Keep the rest of the run directory.
 3. Confirm: `git worktree list` shows no worktree of this run. Set `Closed` in `run.md`.
