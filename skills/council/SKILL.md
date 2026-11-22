@@ -42,6 +42,13 @@ models. A member on your own CLI is a separate fresh session that never sees you
 
 ## Procedure
 
+**Shell first.** Every command here is bash or zsh syntax. Before anything else, confirm the
+shell your command tool runs: `echo "$BASH_VERSION$ZSH_VERSION"` prints a version in bash or zsh
+and nothing useful elsewhere. On Windows that shell is Git Bash; where you have both a bash tool
+and a PowerShell tool, use the bash one for every council command. With only PowerShell or `cmd`,
+stop and tell the operator: the commands are not translated, and a half-translated launch can
+lose the time limit or the alias protection. Members need no particular shell; only you do.
+
 Write literal absolute paths in every command, each as one quoted shell argument where it holds
 a space, and run one command per call wherever the next command needs a value from the previous
 one. The only values you paste from output are git hashes and session ids, and only when
