@@ -14,8 +14,8 @@ copied as written. Each brief is a complete file a member can act on with no oth
   `## Findings`, or `## Choice`). Text before that heading is dropped when saving. Anything else,
   including an error message, a refusal, or a reply cut off by the time limit, is recorded in
   `run.md` as "no answer" with the reason and is not saved as a reply file.
-- **A valid ballot** also names, under `## Choice`, a member that is not the voter. A ballot that
-  names the voter itself is reported and not counted.
+- **A valid ballot** also names, under `## Choice`, one of the members whose replies that voter's
+  brief listed. A ballot that names the voter itself, or anyone else, is reported and not counted.
 
 ## Member rules
 
@@ -39,7 +39,7 @@ Saved as `agent-to-agent/<run>/brief.md`.
 ```
 # Council brief: Advise
 
-You are `<member>`, one member of a council. Other members are answering the same brief
+You are one member of a council. Other members are answering the same brief
 separately. The coordinator reads every reply and decides.
 
 ## Question
@@ -78,12 +78,13 @@ Rules for this turn
 
 ## Review brief
 
-Saved as `agent-to-agent/<run>/brief.md`.
+Saved as `agent-to-agent/<run>/brief.md`. `<base-hash>` is the commit the work started from; for
+uncommitted work it is `HEAD`.
 
 ```
 # Council brief: Review
 
-You are `<member>`, one member of a council. Other members may be reviewing the same work
+You are one member of a council. Other members may be reviewing the same work
 separately. The coordinator reads every reply and decides what to fix.
 
 ## Work under review
@@ -96,7 +97,7 @@ Changes to review: `git diff <base-hash> <snapshot-hash>` in your current direct
 
 Your current directory is a checkout of commit `<snapshot-hash>`.
 You may read files and run read-only inspection commands such as `git log` and `git diff`.
-Do not run the test suite; the coordinator ran it.
+Do not run the test suite; the coordinator's results are below.
 
 ## Test results from the coordinator
 
@@ -130,13 +131,15 @@ For Review rounds 2 and 3, sent to the same member session. Saved as
 ```
 # Council brief: Review, round <n>
 
-You are `<member>`. You reviewed this work in round <n-1>. The coordinator has changed it.
+You reviewed this work in round <n-1>. The coordinator has changed it.
 
 ## New snapshot
 
 Your current directory has been moved to commit `<new-snapshot-hash>`.
 Changes since your last review: `git diff <previous-snapshot-hash> <new-snapshot-hash>`.
 All changes under review: `git diff <base-hash> <new-snapshot-hash>`.
+You may read files and run read-only inspection commands such as `git log` and `git diff`.
+Do not run the test suite; the coordinator's results are below.
 
 ## Earlier findings
 

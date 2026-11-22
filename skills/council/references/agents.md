@@ -8,27 +8,32 @@ has been tried.
 ## Reading the command lines
 
 - `<worktree>` is the member's own directory. `<prompt>` is
-  `Read the brief at <absolute path to the brief> and follow it.` unless **Brief access** says the
-  brief text itself must be the prompt.
+  `Read the brief at <absolute path to the brief> and follow it.`
 - **`command` is the first word of every launch, and the agent's name is never the first word.**
   A shell alias is expanded only for the first word of a command. `timeout` and `env` start the
-  binary found on `PATH` and never see aliases, so `command timeout 900 agy ...` runs the real
-  `agy` even where `agy` is aliased to add a bypass flag. Writing `timeout 900 command agy ...`
+  binary found on `PATH` and never see aliases, so `command timeout -k 10 900 agy ...` runs the real
+  `agy` even where `agy` is aliased to add a bypass flag. Writing `timeout -k 10 900 command agy ...`
   does not work: `command` is a shell builtin and `timeout` cannot run it (exit 127, failed
   2026-11-21).
-- `900` is the 15 minute limit in seconds. Exit status `124` means the limit fired.
+- `900` is the 15 minute limit in seconds. Exit status `124` means the limit fired. `-k 10` kills
+  a member that is still running 10 seconds after that (exit status `137`); a member that ignores
+  the first signal: not tested.
+- **Text that came from a member or a file never goes on a command line.** Inside double quotes
+  the shell runs `$(...)` and backticks before the agent starts. `<prompt>` is always the fixed
+  sentence above with a path you chose. The one value taken from output is a session id, and only
+  when it has the form its **Session id** line gives (a uuid, or `ses_` plus letters and digits).
 - `< /dev/null` stops an agent from waiting on the coordinator's standard input.
-- Run each launch from the member's directory: `cd <worktree> && command timeout 900 ...`.
+- Run each launch from the member's directory: `cd <worktree> && command timeout -k 10 900 ...`.
 
 ## Claude
 
 Status: available.
 
-- **Start:** `command timeout 900 env -u CLAUDECODE claude -p "<prompt>" --model <model-id> --session-id <new-uuid> --permission-mode plan --permission-prompts none --output-format json < /dev/null > <output-file>` — verified 2026-11-21. Get `<new-uuid>` from `uuidgen` first.
+- **Start:** `command timeout -k 10 900 env -u CLAUDECODE claude -p "<prompt>" --model <model-id> --session-id <new-uuid> --permission-mode plan --permission-prompts none --output-format json < /dev/null > <output-file>` — verified 2026-11-21. Get `<new-uuid>` from `uuidgen` first.
 - **Resume:** the Start line with `--resume <session-id>` in place of `--session-id <new-uuid>` — verified 2026-11-21. A resume without `--model` answered on the default model, not the member's; keeping `--model <model-id>` on the resume line: not tested.
-- **Answer:** the `result` field of the single JSON object in `<output-file>`, when `is_error` is `false` — verified 2026-11-21.
+- **Answer:** the `result` field of the single JSON object in `<output-file>`, when `is_error` is `false`; `jq -r .result <output-file>` prints it — verified 2026-11-21.
 - **Session id:** the `session_id` field; it equals the uuid passed in and is unchanged by a resume — verified 2026-11-21.
-- **Model:** `--model claude-haiku-5-5` (a full model id) answered on that model — verified 2026-11-21. `--model haiku` answered on `claude-sonnet-5-5` — failed 2026-11-21. The model that answered is the key under `modelUsage`; check it after every launch and record a mismatch in `run.md`.
+- **Model:** `--model claude-haiku-5-5` (a full model id) answered on that model — verified 2026-11-21. `--model haiku` answered on `claude-sonnet-5-5` — failed 2026-11-21. The model that answered is the key under `modelUsage`; check it after every launch. An answer from another model is "no answer: wrong model".
 - **Read-only:** `--permission-mode plan` with `--permission-prompts none` denied a file write; the denial is listed under `permission_denials` and no file appeared — verified 2026-11-21.
 - **Brief access:** read a brief outside its worktree — verified 2026-11-21.
 - **Version:** 2.1.330 (`command claude --version`) — verified 2026-11-21.
@@ -37,8 +42,8 @@ Status: available.
 
 Status: available.
 
-- **Start:** `command timeout 900 codex exec --sandbox read-only -C <worktree> --json -o <reply-file> "<prompt>" < /dev/null > <events-file>` — verified 2026-11-21.
-- **Resume:** `command timeout 900 codex exec resume <session-id> --json -o <reply-file> "<prompt>" < /dev/null > <events-file>`, run from `<worktree>` — verified 2026-11-21. The resume form accepts neither `--sandbox` nor `-C`.
+- **Start:** `command timeout -k 10 900 codex exec --sandbox read-only -C <worktree> --json -o <reply-file> "<prompt>" < /dev/null > <events-file>` — verified 2026-11-21.
+- **Resume:** `command timeout -k 10 900 codex exec resume <session-id> --json -o <reply-file> "<prompt>" < /dev/null > <events-file>`, run from `<worktree>` — verified 2026-11-21. The resume form accepts neither `--sandbox` nor `-C`.
 - **Answer:** the whole content of `<reply-file>` — verified 2026-11-21.
 - **Session id:** `thread_id` on the first line of `<events-file>` (`"type":"thread.started"`); unchanged by a resume — verified 2026-11-21.
 - **Model:** `-m <model>` — not tested. Without it Codex uses the operator's configured model, and the output does not name it; record the model as "configured default".
@@ -50,7 +55,7 @@ Status: available.
 
 Status: available; read-only by rule only.
 
-- **Start:** `command timeout 900 opencode run --format json -m <provider/model> "<prompt>" < /dev/null > <events-file>` — verified 2026-11-21.
+- **Start:** `command timeout -k 10 900 opencode run --format json -m <provider/model> "<prompt>" < /dev/null > <events-file>` — verified 2026-11-21.
 - **Resume:** the Start line with `--session <session-id>` added — verified 2026-11-21.
 - **Answer:** the `part.text` value on the last line of `<events-file>` whose `type` is `text`; earlier `text` lines are progress notes, not the answer — verified 2026-11-21.
 - **Session id:** `sessionID` on every line, of the form `ses_...`; unchanged by a resume — verified 2026-11-21.
@@ -61,10 +66,11 @@ Status: available; read-only by rule only.
 
 ## Agy
 
-Status: unavailable for any request where the member must read files, which is every Review and
-most Advise. It can answer only from text placed in the prompt.
+Status: unavailable as a member. Headless it cannot read any file, so it cannot read a brief, and
+a brief's text may not be put on the command line. Record it as missing. The lines below are what
+ran, kept for the day its file access changes.
 
-- **Start:** `command timeout 900 agy --sandbox --output-format json --print="<the brief text itself>" < /dev/null > <output-file>` — verified 2026-11-21.
+- **Start:** `command timeout -k 10 900 agy --sandbox --output-format json --print="<prompt>" < /dev/null > <output-file>` — verified 2026-11-21 that it starts and answers a prompt that needs no file; it could not follow `<prompt>` because it could not read the brief.
 - **Resume:** the Start line with `--conversation <session-id>` added before `--print=` — verified 2026-11-21.
 - **Answer:** the `response` field of the single JSON object. An empty `response`, or a `denied_actions` field, means no answer, whatever `status` and the exit status say — verified 2026-11-21.
 - **Session id:** `conversation_id`; unchanged by a resume — verified 2026-11-21.
