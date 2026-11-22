@@ -78,8 +78,11 @@ Rules for this turn
 
 ## Review brief
 
-Saved as `agent-to-agent/<run>/brief.md`. `<base-hash>` is the commit the work started from; for
-uncommitted work it is `HEAD`.
+Saved as `agent-to-agent/<run>/brief.md`. `<base-hash>` is the commit the work started from, always
+written as a full hash. For uncommitted work it is what `git rev-parse HEAD` printed in the
+operator's directory when the round-1 snapshot was taken; record it in `run.md` and use the same
+hash in every round. The word `HEAD` would be wrong: in a member's worktree it means the snapshot,
+and the diff would be empty.
 
 ```
 # Council brief: Review

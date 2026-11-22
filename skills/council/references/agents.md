@@ -12,7 +12,10 @@ has been tried.
 - **`command` is the first word of every launch, and the agent's name is never the first word.**
   A shell alias is expanded only for the first word of a command. `timeout` and `env` start the
   binary found on `PATH` and never see aliases, so `command timeout -k 10 900 agy ...` runs the real
-  `agy` even where `agy` is aliased to add a bypass flag. Writing `timeout -k 10 900 command agy ...`
+  `agy` even where `agy` is aliased to add a bypass flag (verified 2026-11-21: on a machine with
+  that alias, every Agy launch in this form had its file tools auto-denied, which the bypass flag
+  would have approved). A zsh global alias (`alias -g`) expands in any position and is not
+  covered (not tested; none was defined). Writing `timeout -k 10 900 command agy ...`
   does not work: `command` is a shell builtin and `timeout` cannot run it (exit 127, failed
   2026-11-21).
 - `900` is the 15 minute limit in seconds. Exit status `124` means the limit fired. `-k 10` kills
@@ -22,7 +25,8 @@ has been tried.
   the shell runs `$(...)` and backticks before the agent starts. `<prompt>` is always the fixed
   sentence above with a path you chose. The one value taken from output is a session id, and only
   when it has the form its **Session id** line gives (a uuid, or `ses_` plus letters and digits).
-- `< /dev/null` stops an agent from waiting on the coordinator's standard input.
+- `< /dev/null` keeps an agent from waiting on the coordinator's standard input. Every launch on
+  2026-11-21 used it; launching without it: not tested.
 - Run each launch from the member's directory: `cd <worktree> && command timeout -k 10 900 ...`.
 
 ## Claude
@@ -43,7 +47,7 @@ Status: available.
 Status: available.
 
 - **Start:** `command timeout -k 10 900 codex exec --sandbox read-only -C <worktree> --json -o <reply-file> "<prompt>" < /dev/null > <events-file>` — verified 2026-11-21.
-- **Resume:** `command timeout -k 10 900 codex exec resume <session-id> --json -o <reply-file> "<prompt>" < /dev/null > <events-file>`, run from `<worktree>` — verified 2026-11-21. The resume form accepts neither `--sandbox` nor `-C`.
+- **Resume:** `command timeout -k 10 900 codex exec resume <session-id> --json -o <reply-file> "<prompt>" < /dev/null > <events-file>`, run from `<worktree>` — verified 2026-11-21. The resume form lists neither `--sandbox` nor `-C` in its `--help` (verified 2026-11-21). Outside a git repository Codex is expected to need `--skip-git-repo-check`: not tested.
 - **Answer:** the whole content of `<reply-file>` — verified 2026-11-21.
 - **Session id:** `thread_id` on the first line of `<events-file>` (`"type":"thread.started"`); unchanged by a resume — verified 2026-11-21.
 - **Model:** `-m <model>` — not tested. Without it Codex uses the operator's configured model, and the output does not name it; record the model as "configured default".
@@ -76,14 +80,15 @@ ran, kept for the day its file access changes.
 - **Session id:** `conversation_id`; unchanged by a resume — verified 2026-11-21.
 - **Model:** `--model <id>` — not tested. `command agy models` lists the ids.
 - **Read-only:** headless, a file write was denied (`denied_actions` named `write_file`) and no file appeared — verified 2026-11-21. Shell commands under `--sandbox` — not tested.
-- **Brief access:** reading a file was denied (`denied_actions` named `read_file`), both outside and inside its worktree — failed 2026-11-21. Adding `--mode plan`, or a `--settings` value with a `permissions.allow` rule for `read_file` (three spellings), did not change that — failed 2026-11-21. The only thing that lifts it is the bypass flag, which is never used.
+- **Brief access:** reading a file was denied (`denied_actions` named `read_file`), both outside and inside its worktree — failed 2026-11-21. Adding `--mode plan`, or a `--settings` value with a `permissions.allow` rule for `read_file` (three spellings), did not change that — failed 2026-11-21. Agy's own error message names the bypass flag as the way round; that is never used, so: not tested.
 - **Version:** 1.5.14 (`command agy --version`) — verified 2026-11-21.
 
 ## Hazards
 
 - **OpenCode writes when asked; Agy cannot read.** OpenCode has no read-only switch, so its member
-  is read-only by rule and the `git status --porcelain` check is what reveals a stray write
-  (verified 2026-11-21). Agy headless denies every file tool, so it changes nothing but also sees
+  is read-only by rule. The `git status --porcelain` check showed the file it wrote in its
+  worktree (verified 2026-11-21); a write outside its worktree and the operator's checkout is
+  not detected by anything in this skill. Agy headless denies every file tool, so it changes nothing but also sees
   nothing (verified 2026-11-21).
 - **A hung member.** OpenCode has hung with no output on this machine before; it did not in
   five runs on 2026-11-21. With a 5 second limit every agent ended with exit status `124` and left

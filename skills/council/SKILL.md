@@ -70,7 +70,11 @@ they have the form the agent's **Session id** line gives.
    record "requested `<id>`, not confirmed".
 7. **Check the worktrees.** Run `git -C <worktree> status --porcelain` for each member and record
    any output in `run.md` under Rule violations, keeping tool litter named in
-   `references/agents.md` apart from files the member wrote.
+   `references/agents.md` apart from files the member wrote. Run
+   `git --no-optional-locks status --porcelain` in the operator's directory too and compare it
+   with what it printed before the launch; a difference you did not make yourself is a rule
+   violation. These two checks see the member's worktree and the operator's checkout only; a
+   write anywhere else goes unseen.
 8. **Decide.** Read every reply, then write `decision.md`. Each point cites the reply file it came
    from. Disagreements and points only one member made are listed, not dropped.
 9. **Report** to the operator: the conclusion, who answered, who is missing and why, any rule
@@ -126,10 +130,13 @@ branch.**
   `superpowers:using-git-worktrees` says when that skill is installed, otherwise at
   `<repo>/.worktrees/council/<run>/<member>`.
 - The run directory is outside every member's worktree.
-- **No repository involved:** no worktrees and no snapshot. Each member runs in its own empty
-  directory `agent-to-agent/scratch/<run>/<member>`, beside the run directory, which you create
-  with `mkdir -p`. Skip every git command: the ignore lines and leftover list in step 1, and
-  steps 2, 4 and 7. Leave the Snapshot section out of the brief, and close by setting `Closed`.
+- **No repository involved (not tested: no agent has been launched this way):** no worktrees and
+  no snapshot. The run directory is `agent-to-agent/<run>/` in the directory you are working in.
+  Each member runs in its own empty directory `agent-to-agent/scratch/<run>/<member>`, beside
+  the run directory, which you create with `mkdir -p`. Skip every git command: the ignore lines
+  and leftover list in step 1, and steps 2, 4 and 7. In the brief, replace the Snapshot section
+  with one line saying there are no files to read, and close by setting `Closed`. An agent whose
+  Start line fails outside a repository is recorded as missing.
 
 ## Launching
 
@@ -142,7 +149,8 @@ branch.**
 - Launch members as background commands where your harness has them, so a 15 minute turn does not
   hit your own command limit; otherwise one after another.
 - Launch each member in the tightest read-only setting its **Read-only** line gives. A member
-  whose agent is read-only by rule only is still launched; step 7 is what reveals a stray write.
+  whose agent is read-only by rule only is still launched; step 7 reveals a stray write inside
+  its worktree or the operator's checkout, and nowhere else.
 
 ## Limits
 

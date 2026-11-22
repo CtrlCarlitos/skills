@@ -82,7 +82,7 @@
       "category": "worktrees",
       "description": "The request involves no git repository. Members run in their own empty directory under the run's scratch directory; no worktree and no snapshot is made.",
       "status": "documented-not-yet-run",
-      "verification": "Fresh subagent with the skill in a directory that is not a repository. Pass: its commands create scratch/<member> directories and contain no git worktree or snapshot command."
+      "verification": "Fresh subagent with the skill in a directory that is not a repository. Pass: its commands create agent-to-agent/scratch/<run>/<member> directories and contain no git worktree or snapshot command."
     },
     {
       "id": "ordinary-task-does-not-trigger",
