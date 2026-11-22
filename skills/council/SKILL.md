@@ -44,7 +44,7 @@ models. A member on your own CLI is a separate fresh session that never sees you
 
 Write literal absolute paths in every command, each as one quoted shell argument where it holds
 a space, and run one command per call wherever the next command needs a value from the previous
-one. The only values you paste from output are git hashes, uuids and session ids, and only when
+one. The only values you paste from output are git hashes and session ids, and only when
 they have the form the agent's **Session id** line gives.
 
 1. **Run directory.** Pick the run name (`references/briefs.md`). Inside a git repository the run

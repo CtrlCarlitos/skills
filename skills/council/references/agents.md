@@ -8,17 +8,24 @@ has been tried.
 ## Systems and shells
 
 The commands are written for bash or zsh: `VAR=value command`, `< /dev/null`, the `command`
-builtin, coreutils `timeout`, `env -u`, `uuidgen`, `jq`. PowerShell and `cmd` cannot run them as
-written and are not supported; on Windows the coordinator needs a bash shell such as Git Bash, or
-WSL (which is Linux for this purpose).
+builtin, coreutils `timeout`, `env -u`, `jq`. PowerShell and `cmd` cannot run them as written and
+are not supported; on Windows the coordinator needs a bash shell such as Git Bash, or WSL (which
+is Linux for this purpose).
 
-- **Linux:** every command and every agent launch in this file — verified 2026-11-21.
-- **macOS:** not tested. Stock macOS may lack `timeout`; if `command -v timeout` prints nothing,
-  tell the operator rather than launching without a time limit.
-- **Windows, Git Bash:** not tested, neither the shell commands nor any agent launch.
+"Shell commands" below means everything except launching an agent: the snapshot, the worktrees,
+the brief copy, the time limit, closing. They are run in this skill's repository CI on all three
+systems by `bash scripts/tests/test_council_commands.sh`, which prints PASS or FAIL for each.
 
-`bash scripts/tests/test_council_commands.sh` in this skill's repository runs the shell commands
-(no agent) on the system it is run on and prints PASS or FAIL for each.
+- **Linux:** shell commands and every agent launch in this file — verified 2026-11-21.
+- **Windows, Git Bash:** shell commands — verified 2026-11-21, including a native program being
+  stopped at the time limit. Agent launches — not tested. `uuidgen` is missing there (failed
+  2026-11-21); nothing in this skill needs it.
+- **macOS:** shell commands other than the time limit — verified 2026-11-21. Stock macOS has no
+  `timeout` (failed 2026-11-21). Where `command -v timeout` prints nothing, write `gtimeout` in
+  its place, from Homebrew `coreutils` (not tested); where that is missing too, tell the operator
+  what to install. A member is never launched without a time limit. Agent launches — not tested.
+- **Long paths on Windows:** a member's worktree adds `.worktrees/council/<run>/<member>/` to
+  every path; whether that trips the 260-character limit: not tested.
 
 ## Reading the command lines
 
@@ -49,10 +56,10 @@ WSL (which is Linux for this purpose).
 
 Status: available.
 
-- **Start:** `command timeout -k 10 900 env -u CLAUDECODE claude -p "<prompt>" --model <model-id> --session-id <new-uuid> --permission-mode plan --permission-prompts none --output-format json < /dev/null > <output-file>` — verified 2026-11-21. Get `<new-uuid>` from `uuidgen` first.
-- **Resume:** the Start line with `--resume <session-id>` in place of `--session-id <new-uuid>` — verified 2026-11-21. Keep `--model <model-id>` on the resume line: with it the resumed turn answered on the member's model (verified 2026-11-21); without it, on the default model.
+- **Start:** `command timeout -k 10 900 env -u CLAUDECODE claude -p "<prompt>" --model <model-id> --permission-mode plan --permission-prompts none --output-format json < /dev/null > <output-file>` — verified 2026-11-21.
+- **Resume:** the Start line with `--resume <session-id>` added — verified 2026-11-21. Keep `--model <model-id>` on the resume line: with it the resumed turn answered on the member's model (verified 2026-11-21); without it, on the default model.
 - **Answer:** the `result` field of the single JSON object in `<output-file>`, when `is_error` is `false`; `jq -r .result <output-file>` prints it — verified 2026-11-21.
-- **Session id:** the `session_id` field; it equals the uuid passed in and is unchanged by a resume — verified 2026-11-21.
+- **Session id:** the `session_id` field of the output, a uuid Claude picks itself; unchanged by a resume — verified 2026-11-21. (`--session-id <uuid>` sets it up front and also works, verified 2026-11-21, but needs a uuid generator, which Git Bash on Windows lacks.)
 - **Model:** `--model claude-haiku-5-5` (a full model id) answered on that model — verified 2026-11-21. `--model haiku` answered on `claude-sonnet-5-5` — failed 2026-11-21. The model that answered is the key under `modelUsage`; check it after every launch. An answer from another model is "no answer: wrong model".
 - **Read-only:** `--permission-mode plan` with `--permission-prompts none` denied a file write; the denial is listed under `permission_denials` and no file appeared — verified 2026-11-21.
 - **Brief access:** read `agent-to-agent/brief.md` inside its worktree — verified 2026-11-21. It can also read a brief outside its worktree (verified 2026-11-21), which the skill no longer relies on.

@@ -26,19 +26,28 @@ trap 'rm -rf "$work"' EXIT
 
 # --- tools the skill names ---------------------------------------------------
 
-for tool in git timeout env uuidgen jq mkdir cp rm rmdir; do
+for tool in git env jq mkdir cp rm rmdir; do
   if have "$tool"; then pass "tool present: $tool"; else fail "tool present: $tool" "not on PATH"; fi
 done
 
 # --- launching: command, timeout, env -u -------------------------------------
 
-if have timeout; then
-  command timeout -k 1 2 sleep 10
+# The skill writes `timeout`, and `gtimeout` (Homebrew coreutils) where a
+# system such as stock macOS has no `timeout`.
+limit=""
+if have timeout; then limit=timeout
+elif have gtimeout; then limit=gtimeout
+fi
+if [ -n "$limit" ]; then pass "time-limit command present: $limit"
+else fail "time-limit command present" "neither timeout nor gtimeout on PATH"; fi
+
+if [ -n "$limit" ]; then
+  command "$limit" -k 1 2 sleep 10
   status=$?
   if [ "$status" -eq 124 ]; then pass "time limit ends a turn with status 124"
   else fail "time limit ends a turn with status 124" "got $status"; fi
 
-  command timeout -k 1 1 bash -c 'trap "" TERM; sleep 10'
+  command "$limit" -k 1 1 bash -c 'trap "" TERM; sleep 10'
   status=$?
   if [ "$status" -eq 137 ]; then pass "a member that ignores the first signal is killed with status 137"
   else fail "a member that ignores the first signal is killed with status 137" "got $status"; fi
@@ -48,7 +57,7 @@ if have timeout; then
   py="$(command -v python3 || command -v python || true)"
   if [ -n "$py" ]; then
     marker="$work/still-running.txt"
-    command timeout -k 2 2 "$py" -c "import sys, time; time.sleep(6); open(sys.argv[1], 'w').write('alive')" "$marker" < /dev/null
+    command "$limit" -k 2 2 "$py" -c "import sys, time; time.sleep(6); open(sys.argv[1], 'w').write('alive')" "$marker" < /dev/null
     status=$?
     sleep 8
     if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
@@ -61,7 +70,7 @@ if have timeout; then
     fail "a native program is stopped at the time limit" "no python to stand in"
   fi
 
-  seen="$(CLAUDECODE=1 command timeout -k 1 5 env -u CLAUDECODE bash -c 'echo "${CLAUDECODE:-unset}"')"
+  seen="$(CLAUDECODE=1 command "$limit" -k 1 5 env -u CLAUDECODE bash -c 'echo "${CLAUDECODE:-unset}"')"
   if [ "$seen" = "unset" ]; then pass "env -u removes CLAUDECODE for the member"
   else fail "env -u removes CLAUDECODE for the member" "member saw '$seen'"; fi
 else
@@ -71,15 +80,6 @@ fi
 # `command` must be a shell builtin the first word can be; timeout cannot run it.
 if [ "$(type -t command)" = "builtin" ]; then pass "command is a shell builtin"
 else fail "command is a shell builtin" "type -t says '$(type -t command)'"; fi
-
-if have uuidgen; then
-  id="$(uuidgen)"
-  if printf '%s' "$id" | grep -Eqi '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'; then
-    pass "uuidgen prints a uuid ($id)"
-  else
-    fail "uuidgen prints a uuid" "got '$id'"
-  fi
-fi
 
 if have jq; then
   printf '{"is_error":false,"result":"## Recommendation\\nok"}' > "$work/out.json"
