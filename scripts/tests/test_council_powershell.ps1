@@ -18,6 +18,10 @@ $ErrorActionPreference = 'Continue'
 $script:fails = 0
 function Pass([string]$name) { Write-Output "PASS  $name" }
 function Fail([string]$name, [string]$why) { Write-Output "FAIL  $name -- $why"; $script:fails++ }
+function Invoke-FixtureGit([string]$repo, [string[]]$arguments) {
+    & git -C $repo @arguments
+    if ($LASTEXITCODE -ne 0) { throw "fixture git $($arguments[0]) exited $LASTEXITCODE" }
+}
 
 $onWindows = ($env:OS -eq 'Windows_NT')
 Write-Output ("system: " + $(if ($onWindows) { 'Windows' } else { 'not Windows' }))
@@ -88,13 +92,17 @@ $work = Join-Path ([System.IO.Path]::GetTempPath()) ('council ps test ' + [guid]
 New-Item -ItemType Directory -Path $work | Out-Null
 try {
     $repo = Join-Path $work 'repo dir'
-    New-Item -ItemType Directory -Path $repo | Out-Null
-    git -C $repo init -q
-    git -C $repo config user.name 'council test'
-    git -C $repo config user.email 'council-test@example.invalid'
+    $hooks = Join-Path $work 'empty hooks'
+    New-Item -ItemType Directory -Path $repo, $hooks -ErrorAction Stop | Out-Null
+    Invoke-FixtureGit $repo @('init', '-q')
+    Invoke-FixtureGit $repo @('config', '--local', 'user.name', 'council test')
+    Invoke-FixtureGit $repo @('config', '--local', 'user.email', 'council-test@example.invalid')
+    # The disposable commits and worktrees need no operator keys or hooks.
+    Invoke-FixtureGit $repo @('config', '--local', 'commit.gpgSign', 'false')
+    Invoke-FixtureGit $repo @('config', '--local', 'core.hooksPath', $hooks)
     Set-Content -Path (Join-Path $repo 'tracked.txt') -Value 'one'
-    git -C $repo add tracked.txt
-    git -C $repo commit -q -m base
+    Invoke-FixtureGit $repo @('add', 'tracked.txt')
+    Invoke-FixtureGit $repo @('commit', '-q', '-m', 'base')
     Set-Content -Path (Join-Path $repo 'tracked.txt') -Value 'two'
     Set-Content -Path (Join-Path $repo 'new.txt') -Value 'new'
 
@@ -109,7 +117,10 @@ try {
     if ("$out" -eq 'true') { Pass 'a path with a space, in single quotes, reaches bash as one argument' }
     else { Fail 'a path with a space, in single quotes, reaches bash as one argument' "got '$out'" }
 
-    & $bash -c "mkdir -p '$rundir/round-1' '$rundir/raw/round-1'"
+    # Start at the writable fixture. Under the Windows Codex sandbox,
+    # mkdir -p with an absolute path walks inaccessible home ancestors.
+    & $bash -c "cd '$r' && mkdir -p 'agent-to-agent/2026-01-01-test/round-1' 'agent-to-agent/2026-01-01-test/raw/round-1'"
+    if ($LASTEXITCODE -ne 0) { throw "fixture run directory creation exited $LASTEXITCODE" }
 
     $before = (& $bash -c "cd '$r' && git rev-parse HEAD && git --no-optional-locks status --porcelain") -join "`n"
 
@@ -117,7 +128,9 @@ try {
     & $bash -c "cd '$r' && GIT_INDEX_FILE='$rundir/snapshot.index' git read-tree HEAD"
     & $bash -c "cd '$r' && GIT_INDEX_FILE='$rundir/snapshot.index' git add -A"
     $tree = & $bash -c "cd '$r' && GIT_INDEX_FILE='$rundir/snapshot.index' git write-tree"
+    if ($LASTEXITCODE -ne 0) { throw "fixture snapshot tree creation exited $LASTEXITCODE" }
     $snap = & $bash -c "cd '$r' && git commit-tree $tree -p HEAD -m 'council snapshot 2026-01-01-test round 1'"
+    if ($LASTEXITCODE -ne 0) { throw "fixture snapshot commit exited $LASTEXITCODE" }
 
     $after = (& $bash -c "cd '$r' && git rev-parse HEAD && git --no-optional-locks status --porcelain") -join "`n"
     if ($before -ceq $after) { Pass 'wrapped snapshot leaves branch, index and working tree unchanged' }
@@ -136,8 +149,10 @@ try {
     # A member worktree, its brief copy, and a stand-in launch from inside it.
     $wt = "$r/.worktrees/council/2026-01-01-test/member-a"
     & $bash -c "cd '$r' && git worktree add -q --detach '$wt' $snap"
+    if ($LASTEXITCODE -ne 0) { throw "fixture worktree creation exited $LASTEXITCODE" }
     & $bash -c "printf '%s\n' 'Reply with exactly: COUNCIL-OK' > '$rundir/brief.md'"
-    & $bash -c "mkdir -p '$wt/agent-to-agent'"
+    & $bash -c "cd '$wt' && mkdir -p agent-to-agent"
+    if ($LASTEXITCODE -ne 0) { throw "fixture member directory creation exited $LASTEXITCODE" }
     & $bash -c "command cp '$rundir/brief.md' '$wt/agent-to-agent/brief.md'"
 
     & $bash -c "cd '$wt' && command timeout -k 10 900 env -u CLAUDECODE cat agent-to-agent/brief.md < /dev/null > '$rundir/raw/round-1/member-a.txt'"
@@ -151,6 +166,9 @@ try {
     $list = @(& $bash -c "cd '$r' && git worktree list")
     if ($list.Count -eq 1) { Pass 'wrapped closing removes the member worktree' }
     else { Fail 'wrapped closing removes the member worktree' "still listed: $($list.Count) worktrees" }
+}
+catch {
+    Fail 'fixture setup or execution' $_.Exception.Message
 }
 finally {
     Remove-Item -Recurse -Force -Path $work -ErrorAction SilentlyContinue
