@@ -174,6 +174,8 @@ branch.**
 
 ## Launching
 
+- In a Codex command tool with restricted network, follow **Codex network access** in
+  `references/agents.md` before any Start or Resume that calls a remote model.
 - Copy the agent's line from `references/agents.md` and fill in the placeholders. Every launch
   begins `command timeout -k 10 900`: `command` first so no shell alias is applied, `900` for the 15
   minute limit.
@@ -192,7 +194,8 @@ branch.**
   findings to the operator.
 - **Time:** 15 minutes per member turn. Exit status `124` or `137` is "no answer: time limit".
 - **No automatic retry.** A member that fails, runs over, or gives no valid reply is "no answer"
-  for that round.
+  for that round. The approved Codex network retry described in `references/agents.md` applies
+  only when Claude never reached its API.
 - **Missing members:** stated in `run.md`, in `decision.md` and in your report.
 - **Vote:** three or more members, one ballot each.
 
