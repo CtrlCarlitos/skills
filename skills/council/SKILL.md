@@ -43,14 +43,22 @@ models. A member on your own CLI is a separate fresh session that never sees you
 
 ## Procedure
 
-**Shell first.** Every command here is bash or zsh syntax. Before anything else, confirm the
-shell your command tool runs: `echo "$BASH_VERSION$ZSH_VERSION"` prints a version in bash or zsh
-and nothing useful elsewhere. On Windows that shell is Git Bash; where you have both a bash tool
-and a PowerShell tool, use the bash one for every council command. With only PowerShell, hand
-each command, unchanged, to Git Bash as "From PowerShell" in `references/agents.md` says; never
-rewrite a command in PowerShell, because a translated launch can lose the time limit or the alias
-protection. With no Git Bash, or with only `cmd`, stop and tell the operator. Members need no
-particular shell; only you do.
+**Windows Codex with PowerShell.** Run each Git command directly from PowerShell. Use
+`git -C '<absolute repository or worktree path>' ...` for discovery, status, and worktree
+operations. For example, read HEAD with `git -C '<repo>' rev-parse HEAD` and the branch
+with `git -C '<repo>' branch --show-current`. Use `New-Item -ItemType Directory -Path`
+to create directories, `Copy-Item -LiteralPath ... -Destination ...` to copy briefs, and
+`Remove-Item -LiteralPath` to delete the individual files named under Closing. Use the
+"From PowerShell" Git Bash wrapper in `references/agents.md` for member launches, keeping
+the timeout, environment cleanup and redirections in each Start or Resume line. Check Git
+Bash with `& 'C:\Program Files\Git\bin\bash.exe' --version` if installed at that path.
+If Codex reports a sandbox write denial for Git metadata, request approval for that specific
+Git operation through the tool and follow any Guardrail verdict it returns.
+
+**Other coordinators.** Use bash or zsh. In a bash or zsh tool,
+`echo "$BASH_VERSION$ZSH_VERSION"` prints its version. In a PowerShell-only tool on Windows,
+use the "From PowerShell" wrapper for the commands below. If the required shell is unavailable,
+stop and tell the operator.
 
 Write literal absolute paths in every command, each as one quoted shell argument where it holds
 a space, and run one command per call wherever the next command needs a value from the previous
@@ -116,6 +124,9 @@ Members always read a fixed commit, never the operator's working directory.
   committed): the snapshot is that commit, whatever else the working tree holds. Uncommitted
   files that are not part of the request stay out of it. Skip the commands below.
 - You cannot tell whether an uncommitted file is part of the request: ask the operator once.
+- In Windows Codex with PowerShell, if uncommitted work is in scope, use a fixed snapshot
+  hash supplied by the operator. The operator can create one from an authorized Bash shell
+  using the private-index commands below. Wait for that hash before creating member worktrees.
 - Any of the work is uncommitted: record the whole uncommitted state, tracked changes and new untracked files alike, as
   a commit that no branch or ref points to. These four commands leave the operator's branch,
   index and working tree exactly as they were. Run them from the repository root, one per call:
