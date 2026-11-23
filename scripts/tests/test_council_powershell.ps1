@@ -166,6 +166,30 @@ try {
     $list = @(& $bash -c "cd '$r' && git worktree list")
     if ($list.Count -eq 1) { Pass 'wrapped closing removes the member worktree' }
     else { Fail 'wrapped closing removes the member worktree' "still listed: $($list.Count) worktrees" }
+
+    # Windows Codex uses native Git and file commands around the wrapped launch.
+    $head = Invoke-FixtureGit $repo @('rev-parse', 'HEAD')
+    $branch = Invoke-FixtureGit $repo @('branch', '--show-current')
+    $status = (Invoke-FixtureGit $repo @('--no-optional-locks', 'status', '--porcelain')) -join "`n"
+    if (-not $branch -or -not $head) { throw 'native Git did not return the fixture branch and HEAD' }
+    $member = "$r/.worktrees/council/2026-01-01-test/member-b"
+    Invoke-FixtureGit $repo @('worktree', 'add', '-q', '--detach', $member, $head)
+    New-Item -ItemType Directory -Path "$member/agent-to-agent" -ErrorAction Stop | Out-Null
+    Copy-Item -LiteralPath "$rundir/brief.md" -Destination "$member/agent-to-agent/brief.md" -ErrorAction Stop
+    & $bash -c "cd '$member' && command timeout -k 10 900 env -u CLAUDECODE cat agent-to-agent/brief.md < /dev/null > '$rundir/raw/round-1/member-b.txt'"
+    if ($LASTEXITCODE -ne 0) { throw "native worktree stand-in launch exited $LASTEXITCODE" }
+    $reply = Get-Content -LiteralPath "$rundir/raw/round-1/member-b.txt" -ErrorAction Stop
+    if ($reply -cne 'Reply with exactly: COUNCIL-OK') { throw "native worktree reply was '$reply'" }
+    if ((Invoke-FixtureGit $member @('rev-parse', 'HEAD')) -cne $head) { throw 'member used the wrong snapshot' }
+    if (Invoke-FixtureGit $member @('status', '--porcelain')) { throw 'member worktree has changes' }
+    Remove-Item -LiteralPath "$member/agent-to-agent/brief.md" -ErrorAction Stop
+    Invoke-FixtureGit $repo @('worktree', 'remove', $member)
+    if (@(Invoke-FixtureGit $repo @('worktree', 'list')).Count -ne 1) { throw 'native closing left a worktree registered' }
+    $finalStatus = (Invoke-FixtureGit $repo @('--no-optional-locks', 'status', '--porcelain')) -join "`n"
+    if ($finalStatus -cne $status) {
+        throw 'native Council operations changed the operator checkout'
+    }
+    Pass 'native Git and file operations support worktree creation, wrapped launch, and cleanup'
 }
 catch {
     Fail 'fixture setup or execution' $_.Exception.Message
