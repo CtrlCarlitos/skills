@@ -29,10 +29,11 @@ tested there.
   session ran under, `.git` is read-only ("could not create leading directories of
   '.git/worktrees/...': Read-only file system"). A coordinator needs to write inside `.git`.
   Codex started in a mode that allows that: not tested.
-- **Codex, Windows, PowerShell:** failed 2026-11-21 and again 2026-11-22, both times before any
-  council command: guardrail's hook refused its first PowerShell command ("cannot prove the
-  Windows command shell", then "could not parse shell command"). Codex coordinating through the
-  wrapper: not tested.
+- **Codex 0.170.0, Windows, PowerShell 7.6:** native Git and file operations, wrapped Claude
+  launch, and closing — verified 2026-11-22 in issue #54. Worktree creation and removal
+  used sandbox approval. Claude returned a session id and a connection error, with no
+  recommendation. A minimal Haiku request with network approval returned a reply and confirmed
+  the model. A complete Council round with network approval remains unverified.
 
 ## Systems and shells
 
@@ -44,8 +45,9 @@ this purpose.
 
 ### From PowerShell
 
-For a coordinator whose only command tool runs PowerShell. Every command in this skill stays as
-written and is handed to Git Bash; nothing is translated.
+For a coordinator whose only command tool runs PowerShell. Windows Codex runs Git and file
+operations natively as described in `SKILL.md`. Use this wrapper for commands that need Bash,
+including member launches. Other PowerShell coordinators use it for the Bash commands as written.
 
 - **Find Git Bash once.** `(Get-Command git).Source` prints where `git.exe` is, for example
   `C:\Program Files\Git\cmd\git.exe`. Git Bash is `bin\bash.exe` under that Git folder:
@@ -78,11 +80,26 @@ commands, a worktree, a stand-in launch line, closing), with no agent launched:
   `C:\Program Files\Git\bin\bash.exe` there — verified 2026-11-22.
 - PowerShell 7 with the bash of a Linux machine — verified 2026-11-22.
 - An agent coordinating through the wrapper: Agy on PowerShell 7.6 ran a whole round and closed
-  it, the Claude member's launch included — verified 2026-11-22. From Windows PowerShell 5.1,
-  or from Codex: not tested.
+  it, the Claude member's launch included — verified 2026-11-22. Codex started Claude from
+  PowerShell 7.6 with this wrapper in issue #54. A live launch from Windows PowerShell 5.1
+  remains unverified.
 - How guardrail judges a wrapped command: nothing was denied in the Agy run (verified
-  2026-11-22); whether that session ran under guardrail is not known. On the Codex plane: not
-  tested.
+  2026-11-22); whether that session ran under guardrail is not known. Codex passed the wrapped
+  Claude launch to Git Bash in issue #54.
+
+### Codex network access
+
+In a Codex session with restricted network, request scoped approval for the exact Start or
+Resume command before launching a member that calls a remote model. Explain which member needs
+network access and that it will read the brief from its own worktree. Keep the original timeout,
+model selection, and member permission flags. Follow the command tool and Guardrail decisions.
+
+If a sandboxed Claude launch already returned `api_error: connection_failed`, zero API time,
+and empty `modelUsage`, keep its raw JSON. If the host permits an approved network launch,
+retry the same Start or Resume line once with a separate raw output file, such as
+`claude-haiku.retry.json`. Use the retry output for Capture and record which attempt produced
+it. If approval is unavailable or the retry fails, record "no answer" with the connection
+error and continue with the other members.
 
 "Shell commands" below means everything except launching an agent: the snapshot, the worktrees,
 the brief copy, the time limit, closing. They are run in this skill's repository CI on all three
@@ -133,7 +150,7 @@ Status: available.
 
 - **Start:** `command timeout -k 10 900 env -u CLAUDECODE claude -p "<prompt>" --model <model-id> --permission-mode plan --permission-prompts none --output-format json < /dev/null > <output-file>` — verified 2026-11-21.
 - **Resume:** the Start line with `--resume <session-id>` added — verified 2026-11-21. Keep `--model <model-id>` on the resume line: with it the resumed turn answered on the member's model (verified 2026-11-21); without it, on the default model.
-- **Answer:** the `result` field of the single JSON object in `<output-file>`, when `is_error` is `false`; `jq -r .result <output-file>` prints it, and adding `> <reply-file>` saves it — verified 2026-11-21.
+- **Answer:** the `result` field of the single JSON object in `<output-file>`, when `is_error` is `false`; `jq -r .result <output-file>` prints it, and adding `> <reply-file>` saves it — verified 2026-11-21. On Windows Codex, read the JSON with `Get-Content -LiteralPath '<output-file>' -Raw | ConvertFrom-Json`. When `is_error` is `true`, record the error from `result` and any session id. Empty `modelUsage` leaves the requested model unconfirmed. Claude can report `subtype: success` alongside `is_error: true`, as in issue #54.
 - **Session id:** the `session_id` field of the output, a uuid Claude picks itself; unchanged by a resume — verified 2026-11-21. (`--session-id <uuid>` sets it up front and also works, verified 2026-11-21, but needs a uuid generator, which Git Bash on Windows lacks.)
 - **Model:** `--model claude-haiku-5-5` (a full model id) answered on that model — verified 2026-11-21. `--model haiku` answered on `claude-sonnet-5-5` — failed 2026-11-21. The model that answered is the key under `modelUsage`; check it after every launch. An answer from another model is "no answer: wrong model".
 - **Read-only:** `--permission-mode plan` with `--permission-prompts none` denied a file write; the denial is listed under `permission_denials` and no file appeared — verified 2026-11-21.
